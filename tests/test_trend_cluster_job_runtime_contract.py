@@ -56,3 +56,71 @@ def test_job_contract_preserves_existing_active_job_message() -> None:
     assert result["created"] is False
     assert result["message"] == "이미 군집 처리 작업이 실행 중입니다."
     assert module.JOB_STALE_AFTER_MINUTES == 120
+
+
+def test_job_contract_applies_ranking_only_refresh_before_no_pending_fast_exit() -> None:
+    preparation = SimpleNamespace(
+        status="ready",
+        pending_item_count=0,
+        selected_items=(),
+    )
+    calculation = SimpleNamespace(status="calculated")
+    calls: list[tuple[str, object]] = []
+
+    def calculate(received):
+        calls.append(("calculate", received))
+        return calculation
+
+    def finalize(con, received):
+        calls.append(("finalize", (con, received)))
+        return {"status": "success"}
+
+    module = SimpleNamespace(
+        JOB_STALE_AFTER_MINUTES=20,
+        get_clustering_job_settings=lambda _con: {},
+        create_clustering_job=lambda *_args, **_kwargs: {"created": False},
+        prepare_trend_ranking_rebuild=lambda _con, **_kwargs: preparation,
+        calculate_prepared_trend_rankings=calculate,
+        finalize_prepared_trend_rankings=finalize,
+    )
+    con = object()
+
+    install_job_token_contract(module, scan_limit=50_000, max_batches=1)
+    returned = module.prepare_trend_ranking_rebuild(con, lookback_hours=72)
+
+    assert returned is preparation
+    assert calls == [
+        ("calculate", preparation),
+        ("finalize", (con, calculation)),
+    ]
+
+
+def test_job_contract_does_not_precalculate_reused_or_pending_work() -> None:
+    state = {
+        "preparation": SimpleNamespace(
+            status="reused",
+            pending_item_count=0,
+            selected_items=(),
+        )
+    }
+    calls: list[str] = []
+    module = SimpleNamespace(
+        JOB_STALE_AFTER_MINUTES=20,
+        get_clustering_job_settings=lambda _con: {},
+        create_clustering_job=lambda *_args, **_kwargs: {"created": False},
+        prepare_trend_ranking_rebuild=lambda _con, **_kwargs: state["preparation"],
+        calculate_prepared_trend_rankings=lambda _preparation: calls.append("calculate"),
+        finalize_prepared_trend_rankings=lambda _con, _calculation: calls.append("finalize"),
+    )
+
+    install_job_token_contract(module, scan_limit=50_000, max_batches=1)
+    module.prepare_trend_ranking_rebuild(object(), lookback_hours=72)
+
+    state["preparation"] = SimpleNamespace(
+        status="ready",
+        pending_item_count=2,
+        selected_items=({"source_item_id": "item-1"},),
+    )
+    module.prepare_trend_ranking_rebuild(object(), lookback_hours=72)
+
+    assert calls == []
