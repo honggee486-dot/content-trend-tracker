@@ -43,6 +43,8 @@ def test_requested_operating_scenarios_have_dedicated_safe_test_sets() -> None:
         "tests/test_operation_diagnostic_throttle_action.py",
         "tests/test_source_analysis_limit_diagnostic.py",
         "tests/test_source_analysis_limit_diagnostic_cli.py",
+        "tests/test_trend_source_visibility_diagnostic.py",
+        "tests/test_trend_source_visibility_diagnostic_cli.py",
         "tests/test_p2_diagnostic_bundle.py",
     )
     assert "tests/test_program_log_service.py" in SCENARIO_TESTS["operations"]

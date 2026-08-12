@@ -65,6 +65,8 @@ SCENARIO_TESTS: dict[str, tuple[str, ...]] = {
         "tests/test_operation_diagnostic_throttle_action.py",
         "tests/test_source_analysis_limit_diagnostic.py",
         "tests/test_source_analysis_limit_diagnostic_cli.py",
+        "tests/test_trend_source_visibility_diagnostic.py",
+        "tests/test_trend_source_visibility_diagnostic_cli.py",
         "tests/test_p2_diagnostic_bundle.py",
     ),
     "operations": (
