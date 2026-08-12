@@ -27,6 +27,17 @@ def _reliable_quality() -> dict:
     }
 
 
+def _newer_snapshot_quality() -> dict:
+    return {
+        "available": True,
+        "reason": "cluster_snapshot_changed_since_job",
+        "reconstruction_reliable": False,
+        "job_finished_at": "2026-08-09 12:05:00",
+        "cluster_snapshot_min_at": "2026-08-11 03:02:10",
+        "cluster_snapshot_max_at": "2026-08-11 03:02:10",
+    }
+
+
 def _complete_baseline(**overrides) -> dict:
     baseline = {
         "available": True,
@@ -61,6 +72,42 @@ def test_unreliable_quality_sample_requests_new_sample() -> None:
 
     assert report["next_action"]["label"] == "새 군집 표본 확보"
     assert "현재 설정을 유지한 새 군집 표본" in report["next_action"]["reason"]
+
+
+def test_newer_current_snapshot_is_checked_before_requesting_paid_new_sample() -> None:
+    report = _report()
+
+    reconcile_clustering_quality_next_action(report, _newer_snapshot_quality())
+
+    assert report["next_action"]["label"] == "현재 군집 스냅샷 점검"
+    assert "현재 순위가 오래됐다는 뜻이 아니므로" in report["next_action"]["reason"]
+    assert "실제로 필요할 때만 새 군집 표본" in report["next_action"]["reason"]
+
+
+def test_newer_current_snapshot_replaces_current_settings_action() -> None:
+    report = _report("현재 설정 유지")
+
+    reconcile_clustering_quality_next_action(report, _newer_snapshot_quality())
+
+    assert report["next_action"]["label"] == "현재 군집 스냅샷 점검"
+
+
+def test_partially_changed_snapshot_still_requests_new_sample() -> None:
+    report = _report()
+
+    reconcile_clustering_quality_next_action(
+        report,
+        {
+            "available": True,
+            "reason": "cluster_snapshot_changed_since_job",
+            "reconstruction_reliable": False,
+            "job_finished_at": "2026-08-09 12:05:00",
+            "cluster_snapshot_min_at": "2026-08-09 12:04:00",
+            "cluster_snapshot_max_at": "2026-08-09 12:15:00",
+        },
+    )
+
+    assert report["next_action"]["label"] == "새 군집 표본 확보"
 
 
 def test_reliable_quality_sample_keeps_review_action() -> None:
