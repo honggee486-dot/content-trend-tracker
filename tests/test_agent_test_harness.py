@@ -134,7 +134,8 @@ def test_pytest_command_uses_isolated_basetemp_and_no_cache(tmp_path: Path) -> N
     assert "-p" in command
     assert "no:cacheprovider" in command
     assert f"--basetemp={tmp_path / 'pytest'}" in command
-    assert command[-2:] == list(SCENARIO_TESTS["scheduler"])
+    scheduler_tests = list(SCENARIO_TESTS["scheduler"])
+    assert command[-len(scheduler_tests):] == scheduler_tests
 
 
 def test_harness_runs_scenarios_sequentially_with_safe_environment() -> None:
