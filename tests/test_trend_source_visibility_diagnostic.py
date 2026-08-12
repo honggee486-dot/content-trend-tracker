@@ -320,9 +320,9 @@ def test_first_stage_candidates_keep_every_supported_source_type(tmp_path: Path)
 
     candidates, _ = discovery._build_first_stage_candidates(items)
     candidate_source_item_ids = {
-        str(source_item_id)
+        str(candidate_item.get("source_item_id") or "")
         for candidate in candidates
-        for source_item_id in candidate.get("source_item_ids") or ()
+        for candidate_item in candidate.get("items") or ()
     }
     selected_source_item_ids = {
         str(item.get("source_item_id") or "")
