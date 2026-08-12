@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 
+import src.services.trend_clustering_job_service as job_service
 from src.services.trend_cluster_job_runtime_contract import (
     CLUSTERING_ADAPTIVE_JOB_STALE_MINUTES,
+    _install_ranking_only_refresh_contract,
     install_job_token_contract,
 )
 
@@ -124,3 +127,84 @@ def test_job_contract_does_not_precalculate_reused_or_pending_work() -> None:
     module.prepare_trend_ranking_rebuild(object(), lookback_hours=72)
 
     assert calls == []
+
+
+def test_ranking_only_refresh_runs_through_job_loop_without_regular_batch(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    preparation = SimpleNamespace(
+        status="ready",
+        pending_item_count=0,
+        selected_items=(),
+    )
+    calculation = SimpleNamespace(status="calculated")
+    calls: list[str] = []
+    statuses: list[tuple[str, bool]] = []
+    released: list[bool] = []
+
+    class DummyConnection:
+        def execute(self, _query, _params=None):
+            return self
+
+        def fetchone(self):
+            return (50_000, 1)
+
+    class DummyLock:
+        def release(self) -> None:
+            released.append(True)
+
+    @contextmanager
+    def fake_connect_database(_db_path):
+        yield DummyConnection()
+
+    def calculate(received):
+        assert received is preparation
+        calls.append("calculate")
+        return calculation
+
+    def finalize(_con, received):
+        assert received is calculation
+        calls.append("finalize")
+        return {"status": "success"}
+
+    def update_status(_con, _job_id, *, status, finished=False, **_kwargs):
+        statuses.append((str(status), bool(finished)))
+
+    def forbidden_regular_batch(*_args, **_kwargs):
+        raise AssertionError("순위 전용 갱신은 일반 군집 배치 경로로 들어가면 안 됩니다.")
+
+    monkeypatch.setattr(
+        job_service,
+        "acquire_trend_clustering_lock",
+        lambda **_kwargs: SimpleNamespace(
+            acquired=True,
+            lock=DummyLock(),
+            message="",
+        ),
+    )
+    monkeypatch.setattr(job_service, "connect_database", fake_connect_database)
+    monkeypatch.setattr(job_service, "_update_job_status", update_status)
+    monkeypatch.setattr(
+        job_service,
+        "prepare_trend_ranking_rebuild",
+        lambda _con, **_kwargs: preparation,
+    )
+    monkeypatch.setattr(job_service, "calculate_prepared_trend_rankings", calculate)
+    monkeypatch.setattr(job_service, "finalize_prepared_trend_rankings", finalize)
+    monkeypatch.setattr(job_service, "_apply_job_limits", forbidden_regular_batch)
+    monkeypatch.setattr(job_service, "_mark_batch_started", forbidden_regular_batch)
+    monkeypatch.setattr(job_service, "_record_batch", forbidden_regular_batch)
+
+    _install_ranking_only_refresh_contract(job_service)
+    exit_code = job_service.run_clustering_job(
+        "job-ranking-only",
+        db_path=tmp_path / "ranking-only.duckdb",
+        project_root=tmp_path,
+        lookback_hours=72,
+    )
+
+    assert exit_code == 0
+    assert calls == ["calculate", "finalize"]
+    assert statuses == [("running", False), ("success", True)]
+    assert released == [True]
