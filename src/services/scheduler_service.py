@@ -25,6 +25,8 @@ class SchedulerStatus:
     next_run: str = ""
     state: str = ""
     action_matches_project: bool | None = None
+    wake_to_run: bool | None = None
+    start_when_available: bool | None = None
     message: str = ""
 
 
@@ -118,8 +120,11 @@ def get_refresh_scheduler_status(project_root: str | Path) -> SchedulerStatus:
     xml_result = _run_schtasks(["/Query", "/TN", TASK_NAME, "/XML"])
     interval_minutes: int | None = None
     action_matches: bool | None = None
+    wake_to_run: bool | None = None
+    start_when_available: bool | None = None
     if xml_result.returncode == 0 and xml_result.stdout.strip():
         interval_minutes, task_action = _parse_task_xml(xml_result.stdout)
+        wake_to_run, start_when_available = _parse_task_runtime_settings(xml_result.stdout)
         if task_action:
             expected_batch = str(Path(project_root).resolve() / "run_trend_refresh.bat").casefold()
             action_matches = expected_batch in task_action.casefold()
@@ -131,6 +136,8 @@ def get_refresh_scheduler_status(project_root: str | Path) -> SchedulerStatus:
         next_run=next_run,
         state=state,
         action_matches_project=action_matches,
+        wake_to_run=wake_to_run,
+        start_when_available=start_when_available,
         message="자동 수집 작업이 등록되어 있습니다.",
     )
 
@@ -184,9 +191,38 @@ def register_or_update_refresh_scheduler(
             "작업 스케줄러 등록에 실패했습니다. 앱을 관리자 권한으로 다시 실행해야 할 수 있습니다. "
             f"세부 내용: {detail}",
         )
+
+    settings_result = _enable_sleep_aware_task_settings()
+    if settings_result.returncode != 0:
+        detail = settings_result.stderr.strip() or settings_result.stdout.strip() or "알 수 없는 오류"
+        return SchedulerCommandResult(
+            False,
+            "자동 수집 작업은 등록됐지만 절전 대응 설정을 적용하지 못했습니다. "
+            f"세부 내용: {detail}",
+        )
+
+    settings_check = _run_schtasks(["/Query", "/TN", TASK_NAME, "/XML"])
+    if settings_check.returncode != 0 or not settings_check.stdout.strip():
+        detail = settings_check.stderr.strip() or settings_check.stdout.strip() or "작업 XML 조회 실패"
+        return SchedulerCommandResult(
+            False,
+            "자동 수집 작업은 등록됐지만 절전 대응 설정을 확인하지 못했습니다. "
+            f"세부 내용: {detail}",
+        )
+    wake_to_run, start_when_available = _parse_task_runtime_settings(settings_check.stdout)
+    if wake_to_run is not True or start_when_available is not True:
+        return SchedulerCommandResult(
+            False,
+            "자동 수집 작업은 등록됐지만 WakeToRun/StartWhenAvailable 설정이 활성화되지 않았습니다.",
+        )
+
     return SchedulerCommandResult(
         True,
-        f"자동 수집 작업을 {interval}분 간격으로 등록·갱신했습니다. 첫 실행은 등록 시점에서 약 {interval}분 뒤입니다.",
+        (
+            f"자동 수집 작업을 {interval}분 간격으로 등록·갱신했습니다. "
+            "절전 깨우기와 놓친 예약의 가능한 시점 실행을 사용합니다. "
+            f"첫 실행은 등록 시점에서 약 {interval}분 뒤입니다."
+        ),
     )
 
 
@@ -201,9 +237,45 @@ def delete_refresh_scheduler() -> SchedulerCommandResult:
     return SchedulerCommandResult(True, "자동 수집 작업을 삭제했습니다.")
 
 
+def _enable_sleep_aware_task_settings() -> subprocess.CompletedProcess[str]:
+    escaped_task_name = TASK_NAME.replace("'", "''")
+    script = (
+        "$ErrorActionPreference = 'Stop'; "
+        f"$task = Get-ScheduledTask -TaskName '{escaped_task_name}' -TaskPath '\\' -ErrorAction Stop; "
+        "$task.Settings.WakeToRun = $true; "
+        "$task.Settings.StartWhenAvailable = $true; "
+        "Set-ScheduledTask -InputObject $task -ErrorAction Stop | Out-Null"
+    )
+    return _run_powershell(script)
+
+
 def _run_schtasks(arguments: list[str]) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(
         ["schtasks", *arguments],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    return subprocess.CompletedProcess(
+        args=completed.args,
+        returncode=completed.returncode,
+        stdout=_decode_windows_output(completed.stdout),
+        stderr=_decode_windows_output(completed.stderr),
+    )
+
+
+def _run_powershell(script: str) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
@@ -241,6 +313,26 @@ def _parse_task_xml(xml_text: str) -> tuple[int | None, str]:
     command = _find_first_text(root, "Command")
     arguments = _find_first_text(root, "Arguments")
     return _parse_iso_duration_minutes(interval_text), f"{command} {arguments}".strip()
+
+
+def _parse_task_runtime_settings(xml_text: str) -> tuple[bool | None, bool | None]:
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return None, None
+    return (
+        _parse_xml_bool(_find_first_text(root, "WakeToRun")),
+        _parse_xml_bool(_find_first_text(root, "StartWhenAvailable")),
+    )
+
+
+def _parse_xml_bool(value: str) -> bool | None:
+    normalized = str(value or "").strip().casefold()
+    if normalized in {"true", "1"}:
+        return True
+    if normalized in {"false", "0"}:
+        return False
+    return None
 
 
 def _find_first_text(root: ET.Element, local_name: str) -> str:
