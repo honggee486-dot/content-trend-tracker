@@ -20,6 +20,7 @@ SCENARIO_TESTS: dict[str, tuple[str, ...]] = {
         "tests/test_trend_cluster_sparse_protocol.py",
         "tests/test_trend_cluster_token_runtime.py",
         "tests/test_trend_cluster_runtime_contract.py",
+        "tests/test_trend_source_review_runtime.py",
         "tests/test_trend_cluster_job_runtime_contract.py",
         "tests/test_trend_cluster_existing_index.py",
         "tests/test_clustering_job_status_ui.py",

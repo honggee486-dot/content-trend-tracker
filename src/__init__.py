@@ -16,11 +16,17 @@ from src.services.trend_clustering_diagnostic_runtime import (
 from src.services.trend_clustering_quality_runtime import (
     install_trend_clustering_quality_diagnostic_contract,
 )
+from src.services.trend_source_review_runtime import (
+    install_trend_source_review_contract,
+)
 
 
 # 앱·예약 수집·진단이 같은 분석 범위를 사용하도록 Streamlit 여부와 무관하게
 # NAVER·Daum 최근 분석 시간 범위 전체 계약을 먼저 설치합니다.
 install_portal_full_window_analysis_contract()
+# 강한 YouTube·Google Trends·위키 신호는 모든 실행 경로에서 같은 기준으로
+# 추천이 아닌 검토 후보까지만 승격합니다. 사실 근거 안전장치는 그대로 유지합니다.
+install_trend_source_review_contract()
 # HTTP 200 부분 응답은 기존 유효 결과를 유지하면서 누락·검증 탈락 ID만 한 번
 # 보강하고, 보강 요청도 실제 요청 수량으로 Gemini 원장에 기록합니다.
 install_topic_angle_partial_recovery_contract()
@@ -93,8 +99,12 @@ if "streamlit" in sys.modules:
     install_cluster_progress_detail_contract(_clustering_job_module)
 
     import src.ui as _ui_module
+    from src.trend_candidate_blog_recommendation_ui import (
+        install_trend_candidate_blog_recommendation_ui,
+    )
 
     install_clustering_settings_ui_contract(_ui_module)
+    install_trend_candidate_blog_recommendation_ui(_ui_module)
 
     from src.clustering_batch_log_ui import install_clustering_batch_log_ui
     from src.clustering_job_status_ui import install_clustering_job_status_ui
