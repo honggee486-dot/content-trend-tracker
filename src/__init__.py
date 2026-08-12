@@ -22,6 +22,9 @@ from src.services.trend_refresh_clustering_job_history_runtime import (
 from src.services.trend_source_review_runtime import (
     install_trend_source_review_contract,
 )
+from src.services.trend_source_visibility_policy_diagnostic_runtime import (
+    install_trend_source_visibility_policy_diagnostic_contract,
+)
 
 
 # 앱·예약 수집·진단이 같은 분석 범위를 사용하도록 Streamlit 여부와 무관하게
@@ -30,6 +33,9 @@ install_portal_full_window_analysis_contract()
 # 강한 YouTube·Google Trends·위키 신호는 모든 실행 경로에서 같은 기준으로
 # 추천이 아닌 검토 후보까지만 승격합니다. 사실 근거 안전장치는 그대로 유지합니다.
 install_trend_source_review_contract()
+# 읽기 전용 출처 노출 진단의 보류 표본에는 현재 승격 정책을 그대로 적용해
+# 품질·기회·관심 신호 중 실제로 막힌 지표를 함께 표시합니다.
+install_trend_source_visibility_policy_diagnostic_contract()
 # 최신 데이터 수집이 같은 프로세스에서 직접 수행한 2단계 군집도 별도 job/batch
 # 원장에 남겨 이후 P2 품질 진단이 실제 최신 처리 결과를 기준으로 판단하게 합니다.
 install_refresh_clustering_job_history_contract()

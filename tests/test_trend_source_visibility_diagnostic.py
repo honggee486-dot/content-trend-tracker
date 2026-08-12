@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from src.database import connect_database, init_database
+from src.services import trend_discovery_service as discovery
 from src.services.topic_service import upsert_source_signal
 from src.services.trend_discovery_service import rebuild_trend_rankings
 from src.services.trend_source_visibility_diagnostic_service import (
@@ -275,3 +276,107 @@ def test_visibility_diagnostic_distinguishes_filter_eligibility_from_display_lim
     assert naver["default_visible_count"] == 1
     assert naver["ranked_out_count"] == 0
     assert naver["diagnosis"] == "visible"
+
+
+def test_first_stage_candidates_keep_every_supported_source_type(tmp_path: Path) -> None:
+    db_path = tmp_path / "all-source-first-stage.duckdb"
+    init_database(db_path)
+    signals = (
+        _signal("youtube", "yt-all", "유튜브 카메라 기능 공개", signal_value=5.0),
+        _signal("naver_news", "naver-all", "네이버 전기요금 정책 변경"),
+        _signal("daum_web", "daum-all", "다음 자동차 지원 정책 변경"),
+        _signal(
+            "google_trends",
+            "google-all",
+            "검색 관심 키워드",
+            signal_value=20_000,
+            signal_type="google_trend",
+            traffic_count=20_000,
+        ),
+        _signal(
+            "wikipedia_pageviews",
+            "wiki-all",
+            "위키백과 관심 주제",
+            signal_value=10_000,
+            signal_type="wikipedia_pageview",
+            views=10_000,
+            rank=10,
+        ),
+    )
+
+    with connect_database(db_path) as con:
+        for signal in signals:
+            upsert_source_signal(con, signal, create_topic=False)
+        items = discovery._parse_source_rows(con, 72)
+
+    source_types = {str(item.get("source_type") or "") for item in items}
+    assert {
+        "youtube",
+        "naver_news",
+        "daum_web",
+        "google_trends",
+        "wikipedia_pageviews",
+    } <= source_types
+
+    candidates, _ = discovery._build_first_stage_candidates(items)
+    candidate_source_item_ids = {
+        str(source_item_id)
+        for candidate in candidates
+        for source_item_id in candidate.get("source_item_ids") or ()
+    }
+    selected_source_item_ids = {
+        str(item.get("source_item_id") or "")
+        for item in items
+    }
+    assert selected_source_item_ids <= candidate_source_item_ids
+
+
+def test_visibility_diagnostic_explains_wikipedia_hold_policy_blockers(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "wiki-hold-policy.duckdb"
+    init_database(db_path)
+
+    with connect_database(db_path) as con:
+        upsert_source_signal(
+            con,
+            _signal(
+                "wikipedia_pageviews",
+                "wiki-hold",
+                "트로이 전쟁",
+                signal_value=50_000,
+                signal_type="wikipedia_pageview",
+                views=50_000,
+                rank=3,
+            ),
+            create_topic=False,
+        )
+        rebuild_trend_rankings(con, lookback_hours=72)
+        cluster_id = _cluster_id_for_source_type(con, "wikipedia_pageviews")
+        con.execute(
+            """
+            UPDATE trend_clusters
+            SET recommendation_status = 'hold', quality_score = 37,
+                opportunity_score = 23.5, trend_score = 14.8
+            WHERE cluster_id = ?
+            """,
+            [cluster_id],
+        )
+
+        report = build_trend_source_visibility_diagnostic(
+            con,
+            lookback_hours=72,
+            minimum_score=30,
+        )
+
+    wikipedia = report["groups"]["wikipedia"]
+    assert wikipedia["diagnosis"] == "held_by_policy"
+    assert "표본 승격 차단" in wikipedia["diagnosis_label"]
+    example = wikipedia["examples"][0]
+    policy = example["review_policy"]
+    assert policy["candidate_rule"] == "wikipedia_standalone"
+    assert policy["canonical_public_interest_signals"] is True
+    assert policy["would_promote_now"] is False
+    assert "quality_score" in policy["blocking_reasons"]
+    assert "opportunity_score" in policy["blocking_reasons"]
+    assert wikipedia["policy_blocker_summary"]
