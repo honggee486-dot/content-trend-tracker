@@ -140,8 +140,11 @@ def main() -> int:
     parser.add_argument(
         "--lookback-hours",
         type=int,
-        default=72,
-        help="최근 원문 확인 시간 범위",
+        default=None,
+        help=(
+            "최근 원문 확인 시간 범위. 생략하면 DB의 trend_lookback_hours "
+            "앱 설정을 사용합니다."
+        ),
     )
     parser.add_argument(
         "--minimum-score",
@@ -178,7 +181,7 @@ def main() -> int:
         with duckdb.connect(str(db_path), read_only=True) as con:
             report = build_trend_source_visibility_diagnostic(
                 con,
-                lookback_hours=max(6, int(args.lookback_hours)),
+                lookback_hours=args.lookback_hours,
                 minimum_score=float(args.minimum_score),
                 display_limit=int(args.display_limit),
                 sort_by=str(args.sort_by),
