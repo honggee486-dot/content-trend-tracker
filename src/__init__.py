@@ -117,6 +117,7 @@ if "streamlit" in sys.modules:
     from src.log_display_format_ui import install_log_display_formatting
     from src.operational_logs_ui import install_operational_logs_ui
     from src.program_button_log_ui import install_program_button_logging
+    from src.scheduler_wake_status_ui import install_scheduler_wake_status_ui
     from src.trend_auto_model_ui import install_trend_auto_model_ui
     from src.web_update_confirmation_ui import install_web_update_confirmation_ui
     from src.web_update_ui import install_web_update_top_navigation_ui
@@ -131,6 +132,7 @@ if "streamlit" in sys.modules:
     install_clustering_job_status_ui(sys.modules["streamlit"])
     install_operational_logs_ui(sys.modules["streamlit"])
     install_program_button_logging(sys.modules["streamlit"])
+    install_scheduler_wake_status_ui(sys.modules["streamlit"])
     install_trend_auto_model_ui(sys.modules["streamlit"])
     install_web_update_confirmation_ui(sys.modules["streamlit"])
     install_web_update_top_navigation_ui(sys.modules["streamlit"])

@@ -35,6 +35,7 @@ SCENARIO_TESTS: dict[str, tuple[str, ...]] = {
     ),
     "scheduler": (
         "tests/test_scheduler_service.py",
+        "tests/test_scheduler_wake_status_ui.py",
         "tests/test_scheduler_quota_analysis_service.py",
     ),
     "latest-data": (
