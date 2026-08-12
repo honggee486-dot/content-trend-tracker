@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime
 from types import SimpleNamespace
 
 import src.services.trend_clustering_job_service as job_service
+import src.services.trend_refresh_clustering_job_history_runtime as refresh_history_runtime
+from src.database import connect_database, init_database
 from src.services.trend_cluster_job_runtime_contract import (
     CLUSTERING_ADAPTIVE_JOB_STALE_MINUTES,
     _install_ranking_only_refresh_contract,
     install_job_token_contract,
+)
+from src.services.trend_refresh_clustering_job_history_runtime import (
+    _record_refresh_clustering_job,
+    install_refresh_clustering_job_history_contract,
 )
 
 
@@ -208,3 +215,143 @@ def test_ranking_only_refresh_runs_through_job_loop_without_regular_batch(
     assert calls == ["calculate", "finalize"]
     assert statuses == [("running", False), ("success", True)]
     assert released == [True]
+
+
+def test_refresh_inline_clustering_is_recorded_in_job_and_batch_history(tmp_path) -> None:
+    db_path = tmp_path / "refresh-job-history.duckdb"
+    init_database(db_path)
+    started_at = datetime(2026, 8, 11, 3, 2, 0)
+    preparation = SimpleNamespace(
+        ai_clustering_model="gemini-test",
+        ai_clustering_max_items=4_000,
+        ai_clustering_batch_size=200,
+        ai_clustering_max_batches=5,
+        pending_item_count=4,
+    )
+    result = {
+        "reused": False,
+        "ai_clustering": {
+            "status": "success",
+            "remaining_items": 0,
+            "error_message": "",
+        },
+        "batch_log": {
+            "status": "success",
+            "scanned_pending_items": 4,
+            "first_stage_units": 2,
+            "all_first_stage_units": 2,
+            "source_items": 4,
+            "processed_units": 2,
+            "processed_source_items": 4,
+            "existing_links": 1,
+            "new_clusters": 1,
+            "uncertain_units": 0,
+            "conflict_units": 0,
+            "needs_review_items": 0,
+            "input_tokens": 120,
+            "output_tokens": 20,
+            "thought_tokens": 10,
+            "total_tokens": 150,
+        },
+    }
+
+    with connect_database(db_path) as con:
+        job_id = _record_refresh_clustering_job(
+            con,
+            preparation=preparation,
+            result=result,
+            started_at=started_at,
+            duration_ms=3500,
+        )
+        job = con.execute(
+            """
+            SELECT launcher, status, model_name, scan_limit, batch_size, max_batches,
+                   completed_batches, processed_units, processed_source_items,
+                   existing_links, new_clusters, finished_at
+            FROM trend_clustering_jobs
+            WHERE job_id = ?
+            """,
+            [job_id],
+        ).fetchone()
+        batch = con.execute(
+            """
+            SELECT status, first_stage_units, processed_units,
+                   processed_source_items, total_tokens, duration_ms
+            FROM trend_clustering_job_batches
+            WHERE job_id = ? AND batch_number = 1
+            """,
+            [job_id],
+        ).fetchone()
+
+    assert job_id and job_id.startswith("cluster_job_")
+    assert job[:11] == (
+        "trend-refresh-ranking",
+        "success",
+        "gemini-test",
+        4_000,
+        200,
+        5,
+        1,
+        2,
+        4,
+        1,
+        1,
+    )
+    assert job[11] is not None
+    assert batch == ("success", 2, 2, 4, 150, 3500)
+
+
+def test_refresh_history_contract_links_finalize_result_to_new_job(monkeypatch) -> None:
+    preparation = SimpleNamespace(status="ready")
+    calculation = SimpleNamespace(preparation=preparation)
+    con = object()
+    recorded: list[tuple[object, object, dict]] = []
+    module = None
+
+    def calculate(received):
+        assert received is preparation
+        return calculation
+
+    def finalize(received_con, received_calculation):
+        assert received_con is con
+        assert received_calculation is calculation
+        return {
+            "reused": False,
+            "ai_clustering": {"status": "success"},
+            "ai_review": {"status": "success"},
+            "batch_log": {"processed_units": 1},
+        }
+
+    def refresh():
+        calculated = module.calculate_prepared_trend_rankings(preparation)
+        return module.finalize_prepared_trend_rankings(con, calculated)
+
+    module = SimpleNamespace(
+        refresh_trend_sources_short_connections=refresh,
+        calculate_prepared_trend_rankings=calculate,
+        finalize_prepared_trend_rankings=finalize,
+    )
+
+    def fake_record(received_con, *, preparation, result, started_at, duration_ms):
+        assert received_con is con
+        assert isinstance(started_at, datetime)
+        assert duration_ms >= 0
+        recorded.append((received_con, preparation, dict(result)))
+        return "cluster_job_refresh_test"
+
+    monkeypatch.setattr(
+        refresh_history_runtime,
+        "_record_refresh_clustering_job",
+        fake_record,
+    )
+    install_refresh_clustering_job_history_contract(module)
+
+    result = module.refresh_trend_sources_short_connections()
+
+    assert len(recorded) == 1
+    assert recorded[0][1] is preparation
+    assert result["ai_clustering"]["job_id"] == "cluster_job_refresh_test"
+    assert result["ai_review"]["job_id"] == "cluster_job_refresh_test"
+
+    module.finalize_prepared_trend_rankings(con, calculation)
+    assert len(recorded) == 1
