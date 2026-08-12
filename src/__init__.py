@@ -16,6 +16,9 @@ from src.services.trend_clustering_diagnostic_runtime import (
 from src.services.trend_clustering_quality_runtime import (
     install_trend_clustering_quality_diagnostic_contract,
 )
+from src.services.trend_refresh_clustering_job_history_runtime import (
+    install_refresh_clustering_job_history_contract,
+)
 from src.services.trend_source_review_runtime import (
     install_trend_source_review_contract,
 )
@@ -27,6 +30,9 @@ install_portal_full_window_analysis_contract()
 # 강한 YouTube·Google Trends·위키 신호는 모든 실행 경로에서 같은 기준으로
 # 추천이 아닌 검토 후보까지만 승격합니다. 사실 근거 안전장치는 그대로 유지합니다.
 install_trend_source_review_contract()
+# 최신 데이터 수집이 같은 프로세스에서 직접 수행한 2단계 군집도 별도 job/batch
+# 원장에 남겨 이후 P2 품질 진단이 실제 최신 처리 결과를 기준으로 판단하게 합니다.
+install_refresh_clustering_job_history_contract()
 # HTTP 200 부분 응답은 기존 유효 결과를 유지하면서 누락·검증 탈락 ID만 한 번
 # 보강하고, 보강 요청도 실제 요청 수량으로 Gemini 원장에 기록합니다.
 install_topic_angle_partial_recovery_contract()
