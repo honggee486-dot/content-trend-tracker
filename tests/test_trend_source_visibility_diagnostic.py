@@ -17,20 +17,37 @@ def _signal(
     title: str,
     *,
     signal_value: float | None = None,
+    observed_at: datetime | None = None,
     **metadata,
 ) -> dict[str, object]:
-    observed_at = datetime.now() - timedelta(hours=1)
+    captured_at = observed_at or (datetime.now() - timedelta(hours=1))
     return {
         "source_type": source_type,
         "external_id": external_id,
         "title": title,
         "source_name": source_type,
         "source_url": f"https://example.com/{external_id}",
-        "published_at": observed_at,
-        "observed_at": observed_at,
+        "published_at": captured_at,
+        "observed_at": captured_at,
         "signal_value": signal_value,
         "metadata": {"item_title": title, **metadata},
     }
+
+
+def _cluster_id_for_source_type(con, source_type: str) -> str:
+    row = con.execute(
+        """
+        SELECT DISTINCT tc.cluster_id
+        FROM trend_clusters tc
+        JOIN trend_cluster_items tci ON tci.cluster_id = tc.cluster_id
+        JOIN source_items s ON s.source_item_id = tci.source_item_id
+        WHERE s.source_type = ?
+        LIMIT 1
+        """,
+        [source_type],
+    ).fetchone()
+    assert row is not None
+    return str(row[0])
 
 
 def test_visibility_diagnostic_distinguishes_visible_and_unclustered_sources(
@@ -74,6 +91,8 @@ def test_visibility_diagnostic_distinguishes_visible_and_unclustered_sources(
         )
 
     assert report["available"] is True
+    assert report["display_limit"] == 100
+    assert report["sort_by"] == "opportunity"
     youtube = report["groups"]["youtube"]
     assert youtube["recent_items"] == 1
     assert youtube["cluster_count"] == 1
@@ -126,5 +145,133 @@ def test_visibility_diagnostic_identifies_score_filter_without_changing_policy(
     youtube = report["groups"]["youtube"]
     assert youtube["review_count"] == 1
     assert youtube["default_visible_count"] == 0
+    assert youtube["eligible_at_or_above_score_count"] == 0
     assert youtube["eligible_below_score_count"] == 1
     assert youtube["diagnosis"] == "hidden_by_score"
+
+
+def test_visibility_diagnostic_does_not_treat_old_cluster_as_recent_source_visibility(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "stale-cluster.duckdb"
+    init_database(db_path)
+    now = datetime.now()
+
+    with connect_database(db_path) as con:
+        upsert_source_signal(
+            con,
+            _signal(
+                "youtube",
+                "yt-old",
+                "과거 스마트폰 카메라 비교",
+                observed_at=now - timedelta(hours=120),
+                signal_value=8.0,
+                signal_type="emerging_topic",
+                topic_score=8.0,
+                views_per_hour=8_000,
+                view_delta=50_000,
+            ),
+            create_topic=False,
+        )
+        rebuild_trend_rankings(con, lookback_hours=240)
+        upsert_source_signal(
+            con,
+            _signal(
+                "youtube",
+                "yt-new-unclustered",
+                "새 스마트폰 배터리 기능 공개",
+                observed_at=now - timedelta(hours=1),
+                signal_value=9.0,
+                signal_type="emerging_topic",
+                topic_score=9.0,
+                views_per_hour=12_000,
+                view_delta=80_000,
+            ),
+            create_topic=False,
+        )
+
+        report = build_trend_source_visibility_diagnostic(
+            con,
+            lookback_hours=72,
+            minimum_score=30,
+            now=now,
+        )
+
+    youtube = report["groups"]["youtube"]
+    assert youtube["recent_items"] == 1
+    assert youtube["recent_unclustered_items"] == 1
+    assert youtube["cluster_count"] == 0
+    assert youtube["default_visible_count"] == 0
+    assert youtube["diagnosis"] == "unclustered_or_stale"
+
+
+def test_visibility_diagnostic_distinguishes_filter_eligibility_from_display_limit(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "display-limit.duckdb"
+    init_database(db_path)
+
+    with connect_database(db_path) as con:
+        upsert_source_signal(
+            con,
+            _signal(
+                "youtube",
+                "yt-ranked-out",
+                "갤럭시 S26 카메라 기능 공개",
+                signal_value=9.0,
+                signal_type="emerging_topic",
+                topic_score=9.0,
+                views_per_hour=12_000,
+                view_delta=80_000,
+            ),
+            create_topic=False,
+        )
+        upsert_source_signal(
+            con,
+            _signal(
+                "naver_news",
+                "naver-top",
+                "전기요금 지원 정책 변경 안내",
+                signal_value=8.0,
+            ),
+            create_topic=False,
+        )
+        rebuild_trend_rankings(con, lookback_hours=72)
+
+        youtube_cluster_id = _cluster_id_for_source_type(con, "youtube")
+        naver_cluster_id = _cluster_id_for_source_type(con, "naver_news")
+        assert youtube_cluster_id != naver_cluster_id
+        con.execute(
+            """
+            UPDATE trend_clusters
+            SET recommendation_status = 'review', trend_score = 40,
+                opportunity_score = 10
+            """
+        )
+        con.execute(
+            "UPDATE trend_clusters SET opportunity_score = 90 WHERE cluster_id = ?",
+            [naver_cluster_id],
+        )
+
+        report = build_trend_source_visibility_diagnostic(
+            con,
+            lookback_hours=72,
+            minimum_score=30,
+            display_limit=1,
+            sort_by="opportunity",
+        )
+
+    assert report["eligible_clusters"] == 2
+    assert report["default_visible_clusters"] == 1
+    youtube = report["groups"]["youtube"]
+    assert youtube["cluster_count"] == 1
+    assert youtube["eligible_at_or_above_score_count"] == 1
+    assert youtube["default_visible_count"] == 0
+    assert youtube["ranked_out_count"] == 1
+    assert youtube["diagnosis"] == "ranked_out"
+    assert youtube["examples"][0]["in_default_list"] is False
+
+    naver = report["groups"]["naver"]
+    assert naver["default_visible_count"] == 1
+    assert naver["ranked_out_count"] == 0
+    assert naver["diagnosis"] == "visible"

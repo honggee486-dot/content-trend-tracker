@@ -26,6 +26,12 @@ _STATUS_LABELS = {
     "review": "검토",
     "hold": "보류",
 }
+_SORT_LABELS = {
+    "opportunity": "글감 추천순",
+    "trend": "급상승순",
+    "quality": "자료 완성도순",
+    "recent": "최근 확인순",
+}
 
 
 def _print_human(report: dict) -> None:
@@ -48,15 +54,22 @@ def _print_human(report: dict) -> None:
             print(f"오류: {report['error_message']}")
         return
 
-    print(
-        f"조회 범위: 최근 {int(report['lookback_hours']):,}시간 · "
-        f"기본 목록 기준 최소 점수 {float(report['minimum_score']):g} · 추천+검토"
+    sort_label = _SORT_LABELS.get(
+        str(report.get("sort_by") or ""),
+        str(report.get("sort_by") or "-"),
     )
     print(
-        "현재 전체 군집/기본 목록 노출: "
+        f"조회 범위: 최근 {int(report['lookback_hours']):,}시간 · 추천+검토 · "
+        f"최소 트렌드 점수 {float(report['minimum_score']):g} · {sort_label} · "
+        f"최대 {int(report['display_limit']):,}개"
+    )
+    print(
+        "현재 전체 군집/필터 통과/실제 기본 목록 표시: "
         f"{int(report['total_clusters']):,}/"
+        f"{int(report['eligible_clusters']):,}/"
         f"{int(report['default_visible_clusters']):,}"
     )
+    print(f"참고: {report['scope_note']}")
     print(f"참고: {report['overlap_note']}")
     print()
 
@@ -76,9 +89,14 @@ def _print_human(report: dict) -> None:
             f"{int(item['hold_count']):,}"
         )
         print(
-            "- 기본 목록 노출/추천·검토 점수 미달/최고 트렌드 점수: "
+            "- 실제 목록 표시/표시 한도 밖/추천·검토 점수 미달: "
             f"{int(item['default_visible_count']):,}/"
-            f"{int(item['eligible_below_score_count']):,}/"
+            f"{int(item['ranked_out_count']):,}/"
+            f"{int(item['eligible_below_score_count']):,}"
+        )
+        print(
+            "- 최고 글감기회/트렌드 점수: "
+            f"{float(item['highest_opportunity_score']):.1f}/"
             f"{float(item['highest_trend_score']):.1f}"
         )
         print(f"- 진단: {item['diagnosis_label']}")
@@ -87,16 +105,22 @@ def _print_human(report: dict) -> None:
                 str(example.get("recommendation_status") or ""),
                 str(example.get("recommendation_status") or "-"),
             )
+            visibility = (
+                "기본 목록 표시"
+                if bool(example.get("in_default_list"))
+                else "기본 목록 밖"
+            )
             print(
-                f"  표본: [{status}] {example.get('title') or '-'} · "
+                f"  표본: [{status}·{visibility}] {example.get('title') or '-'} · "
                 f"트렌드 {float(example.get('trend_score') or 0):.1f} · "
                 f"기회 {float(example.get('opportunity_score') or 0):.1f}"
             )
         print()
 
     print(
-        "해석 순서: 최근 원문이 있는지 → 현재 군집에 연결됐는지 → 추천·검토로 "
-        "판정됐는지 → 최소 점수 기준을 통과했는지 확인합니다."
+        "해석 순서: 최근 원문이 있는지 → 최근 원문이 현재 군집에 연결됐는지 → "
+        "추천·검토와 최소 점수를 통과했는지 → 실제 기본 정렬 상위 표시 한도 안에 "
+        "들어왔는지 확인합니다."
     )
 
 
@@ -123,7 +147,19 @@ def main() -> int:
         "--minimum-score",
         type=float,
         default=30.0,
-        help="기본 추천·검토 목록 최소 트렌드 점수",
+        help="추천·검토 후보 최소 트렌드 점수",
+    )
+    parser.add_argument(
+        "--display-limit",
+        type=int,
+        default=100,
+        help="실제 후보 목록에 표시할 최대 행 수",
+    )
+    parser.add_argument(
+        "--sort-by",
+        choices=("opportunity", "trend", "quality", "recent"),
+        default="opportunity",
+        help="실제 후보 목록 정렬 기준",
     )
     parser.add_argument(
         "--json",
@@ -144,6 +180,8 @@ def main() -> int:
                 con,
                 lookback_hours=max(6, int(args.lookback_hours)),
                 minimum_score=float(args.minimum_score),
+                display_limit=int(args.display_limit),
+                sort_by=str(args.sort_by),
             )
     except Exception as exc:
         print(f"읽기 전용 출처별 글감 노출 진단에 실패했습니다: {exc}", file=sys.stderr)

@@ -39,6 +39,10 @@ def test_trend_source_visibility_json_cli_is_read_only(tmp_path: Path) -> None:
     assert report["read_only"] is True
     assert report["available"] is True
     assert report["minimum_score"] == 30.0
+    assert report["display_limit"] == 100
+    assert report["sort_by"] == "opportunity"
+    assert report["eligible_clusters"] == 0
+    assert report["default_visible_clusters"] == 0
     assert set(report["groups"]) == {
         "youtube",
         "naver",
@@ -73,13 +77,50 @@ def test_trend_source_visibility_human_cli_shows_exposure_chain(tmp_path: Path) 
 
     assert completed.returncode == 0, completed.stderr
     assert "트렌드 출처별 글감 노출 읽기 전용 진단" in completed.stdout
+    assert "글감 추천순 · 최대 100개" in completed.stdout
+    assert "현재 전체 군집/필터 통과/실제 기본 목록 표시" in completed.stdout
     assert "[YouTube]" in completed.stdout
     assert "[NAVER]" in completed.stdout
     assert "[Daum]" in completed.stdout
     assert "[Google Trends]" in completed.stdout
     assert "[위키백과]" in completed.stdout
-    assert "기본 목록 노출/추천·검토 점수 미달/최고 트렌드 점수" in completed.stdout
+    assert "실제 목록 표시/표시 한도 밖/추천·검토 점수 미달" in completed.stdout
+    assert "최고 글감기회/트렌드 점수" in completed.stdout
     assert "해석 순서:" in completed.stdout
+    assert _capture_database_state(db_path) == before
+
+
+def test_trend_source_visibility_cli_accepts_actual_list_scope_options(tmp_path: Path) -> None:
+    db_path = tmp_path / "visibility-options.duckdb"
+    init_database(db_path)
+    before = _capture_database_state(db_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "utf8",
+            str(PROJECT_ROOT / "scripts" / "report_trend_source_visibility.py"),
+            "--db",
+            str(db_path),
+            "--display-limit",
+            "25",
+            "--sort-by",
+            "recent",
+            "--json",
+        ],
+        cwd=PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    report = json.loads(completed.stdout)
+    assert report["display_limit"] == 25
+    assert report["sort_by"] == "recent"
+    assert report["read_only_verification"]["verified"] is True
     assert _capture_database_state(db_path) == before
 
 
