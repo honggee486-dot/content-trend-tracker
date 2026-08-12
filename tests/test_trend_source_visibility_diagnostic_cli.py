@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 from scripts.report_operation_diagnostics import _capture_database_state
-from src.database import init_database
+from src.database import connect_database, init_database, set_setting
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +38,7 @@ def test_trend_source_visibility_json_cli_is_read_only(tmp_path: Path) -> None:
     report = json.loads(completed.stdout)
     assert report["read_only"] is True
     assert report["available"] is True
+    assert report["lookback_hours"] == 72
     assert report["minimum_score"] == 30.0
     assert report["display_limit"] == 100
     assert report["sort_by"] == "opportunity"
@@ -50,6 +51,39 @@ def test_trend_source_visibility_json_cli_is_read_only(tmp_path: Path) -> None:
         "google_trends",
         "wikipedia",
     }
+    assert report["read_only_verification"]["verified"] is True
+    assert _capture_database_state(db_path) == before
+
+
+def test_trend_source_visibility_cli_uses_configured_lookback_by_default(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "visibility-configured-lookback.duckdb"
+    init_database(db_path)
+    with connect_database(db_path) as con:
+        set_setting(con, "trend_lookback_hours", "168")
+    before = _capture_database_state(db_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "utf8",
+            str(PROJECT_ROOT / "scripts" / "report_trend_source_visibility.py"),
+            "--db",
+            str(db_path),
+            "--json",
+        ],
+        cwd=PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    report = json.loads(completed.stdout)
+    assert report["lookback_hours"] == 168
     assert report["read_only_verification"]["verified"] is True
     assert _capture_database_state(db_path) == before
 
@@ -93,6 +127,8 @@ def test_trend_source_visibility_human_cli_shows_exposure_chain(tmp_path: Path) 
 def test_trend_source_visibility_cli_accepts_actual_list_scope_options(tmp_path: Path) -> None:
     db_path = tmp_path / "visibility-options.duckdb"
     init_database(db_path)
+    with connect_database(db_path) as con:
+        set_setting(con, "trend_lookback_hours", "168")
     before = _capture_database_state(db_path)
 
     completed = subprocess.run(
@@ -103,6 +139,8 @@ def test_trend_source_visibility_cli_accepts_actual_list_scope_options(tmp_path:
             str(PROJECT_ROOT / "scripts" / "report_trend_source_visibility.py"),
             "--db",
             str(db_path),
+            "--lookback-hours",
+            "24",
             "--display-limit",
             "25",
             "--sort-by",
@@ -118,6 +156,7 @@ def test_trend_source_visibility_cli_accepts_actual_list_scope_options(tmp_path:
 
     assert completed.returncode == 0, completed.stderr
     report = json.loads(completed.stdout)
+    assert report["lookback_hours"] == 24
     assert report["display_limit"] == 25
     assert report["sort_by"] == "recent"
     assert report["read_only_verification"]["verified"] is True
