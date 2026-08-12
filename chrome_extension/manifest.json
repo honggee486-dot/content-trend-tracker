@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "콘텐츠 트렌드 트래커 입력 보조",
+  "version": "0.3.0",
+  "description": "사용자가 복사한 발행 패키지를 현재 블로그 편집기에 입력합니다. 로그인과 최종 발행은 사용자가 직접 수행합니다.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "clipboardRead"
+  ],
+  "action": {
+    "default_title": "콘텐츠 트렌드 트래커 입력 보조",
+    "default_popup": "popup.html"
+  }
+}

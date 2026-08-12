@@ -1,0 +1,40 @@
+[client]
+toolbarMode = "developer"
+
+[server]
+address = "127.0.0.1"
+port = 8518
+headless = true
+runOnSave = false
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "dark"
+primaryColor = "#6EA8FE"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#171D27"
+textColor = "#E8EDF5"
+linkColor = "#8AB4F8"
+borderColor = "#2D3748"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "8px"
+buttonRadius = "8px"
+baseFontSize = 15
+headingFontSizes = ["30px", "23px", "19px", "16px", "14px", "12px"]
+headingFontWeights = [600, 600, 600, 600, 600, 600]
+greenColor = "#5FD49A"
+orangeColor = "#F0B35A"
+redColor = "#F07A7A"
+blueColor = "#6EA8FE"
+dataframeBorderColor = "#2D3748"
+dataframeHeaderBackgroundColor = "#171D27"
+
+[theme.sidebar]
+backgroundColor = "#111722"
+secondaryBackgroundColor = "#1A2230"
+textColor = "#E8EDF5"
+borderColor = "#2D3748"
+primaryColor = "#6EA8FE"

@@ -1,0 +1,61 @@
+name: Browser Regression
+
+on:
+  push:
+    paths:
+      - "app.py"
+      - "src/**"
+      - "scripts/run_browser_regression.py"
+      - "requirements.txt"
+      - "VERSION"
+      - ".streamlit/**"
+      - ".github/workflows/browser-regression.yml"
+      - "docs/P1_BROWSER_REGRESSION.md"
+      - "docs/NEXT_WORK.md"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "app.py"
+      - "src/**"
+      - "scripts/run_browser_regression.py"
+      - "requirements.txt"
+      - "VERSION"
+      - ".streamlit/**"
+      - ".github/workflows/browser-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-regression:
+    name: Ubuntu / Python 3.12 / Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install application dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: |
+          python -m pip install "playwright>=1.54,<2"
+          python -m playwright install --with-deps chromium
+
+      - name: Run isolated browser regression
+        run: python scripts/run_browser_regression.py

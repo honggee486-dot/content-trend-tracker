@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>콘텐츠 트렌드 트래커 입력 보조</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>블로그 편집기 입력 보조</h1>
+      <p class="notice">
+        콘텐츠 트렌드 트래커에서 복사한 10분 유효 전달 데이터를 불러와
+        현재 탭의 제목·본문·태그·검색 설명 입력을 시도합니다.
+      </p>
+
+      <div class="actions">
+        <button id="readClipboard" type="button">클립보드에서 불러오기</button>
+        <button id="diagnoseEditor" type="button">입력칸 진단</button>
+        <button id="fillEditor" type="button" class="primary" disabled>
+          현재 편집기에 입력
+        </button>
+      </div>
+
+      <label for="payload">전달 데이터</label>
+      <textarea
+        id="payload"
+        rows="8"
+        spellcheck="false"
+        placeholder="클립보드 읽기가 막히면 여기에 JSON을 직접 붙여넣으세요."
+      ></textarea>
+
+      <section id="summary" class="summary" hidden>
+        <strong id="summaryTitle"></strong>
+        <span id="summaryPlatform"></span>
+        <span id="summaryExpiry"></span>
+      </section>
+
+      <pre id="status" role="status" aria-live="polite"></pre>
+
+      <details id="reportSection" class="report" hidden>
+        <summary>호환성 보고서 JSON</summary>
+        <p>
+          원고·제목·태그·로그인 정보·URL 쿼리를 제외하고 호스트와 선택자,
+          iframe 위치, 입력 성공 여부만 담습니다.
+        </p>
+        <textarea
+          id="compatibilityReport"
+          rows="9"
+          readonly
+          spellcheck="false"
+          aria-label="호환성 보고서 JSON"
+        ></textarea>
+        <button id="copyCompatibilityReport" type="button" disabled>
+          호환성 보고서 복사
+        </button>
+      </details>
+
+      <p class="safety">
+        입력칸 진단은 선택자와 iframe 위치만 확인하며 입력값은 읽지 않습니다.
+        로그인·쿠키·비밀번호를 읽거나 저장하지 않으며 게시 버튼을 누르지 않습니다.
+        입력 결과와 이미지 3개 위치를 확인한 뒤 사용자가 직접 저장·발행하세요.
+      </p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

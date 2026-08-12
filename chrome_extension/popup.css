@@ -1,0 +1,112 @@
+:root {
+  color-scheme: light dark;
+  font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+}
+
+body {
+  margin: 0;
+  width: 390px;
+}
+
+main {
+  padding: 16px;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0 0 10px;
+}
+
+.notice,
+.safety,
+.report p {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0 12px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+#fillEditor {
+  grid-column: 1 / -1;
+}
+
+button {
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  cursor: pointer;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+button.primary {
+  font-weight: 700;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+textarea {
+  box-sizing: border-box;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  resize: vertical;
+  width: 100%;
+}
+
+.summary,
+.report {
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  margin-top: 10px;
+  padding: 10px;
+}
+
+.summary {
+  display: grid;
+  gap: 4px;
+}
+
+.summary span,
+.report summary {
+  font-size: 12px;
+}
+
+.report summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+#copyCompatibilityReport {
+  margin-top: 8px;
+  width: 100%;
+}
+
+#status {
+  font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 10px 0 0;
+  max-height: 210px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.safety {
+  opacity: 0.8;
+}
