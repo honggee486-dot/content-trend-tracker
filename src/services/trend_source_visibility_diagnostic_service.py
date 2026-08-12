@@ -26,6 +26,7 @@ _DIAGNOSIS_LABELS = {
     "no_recent_items": "최근 분석 범위 원문 없음",
     "no_visible_candidate": "기본 목록 노출 후보 없음",
 }
+_DEFAULT_LOOKBACK_HOURS = 72
 _DEFAULT_DISPLAY_LIMIT = 100
 _DEFAULT_SORT_BY = "opportunity"
 _ALLOWED_SORTS = frozenset({"opportunity", "trend", "quality", "recent"})
@@ -33,6 +34,14 @@ _ALLOWED_SORTS = frozenset({"opportunity", "trend", "quality", "recent"})
 
 def _table_names(con: duckdb.DuckDBPyConnection) -> set[str]:
     return {str(row[0]) for row in con.execute("SHOW TABLES").fetchall()}
+
+
+def _bounded_lookback_hours(value: object) -> int:
+    try:
+        parsed = int(value) if value is not None else _DEFAULT_LOOKBACK_HOURS
+    except (TypeError, ValueError, OverflowError):
+        parsed = _DEFAULT_LOOKBACK_HOURS
+    return max(6, parsed)
 
 
 def _bounded_score(value: float) -> float:
@@ -267,7 +276,7 @@ def _group_metrics(
 def build_trend_source_visibility_diagnostic(
     con: duckdb.DuckDBPyConnection,
     *,
-    lookback_hours: int = 72,
+    lookback_hours: int | None = None,
     minimum_score: float = 30.0,
     display_limit: int = _DEFAULT_DISPLAY_LIMIT,
     sort_by: str = _DEFAULT_SORT_BY,
@@ -275,11 +284,20 @@ def build_trend_source_visibility_diagnostic(
     example_limit: int = 5,
 ) -> dict[str, Any]:
     """출처별 최근 원문이 실제 기본 후보 목록까지 도달하는지 읽기 전용으로 집계합니다."""
-    bounded_hours = max(6, int(lookback_hours))
+    table_names = _table_names(con)
+    configured_lookback: object = None
+    if lookback_hours is None and "app_settings" in table_names:
+        row = con.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key = 'trend_lookback_hours'"
+        ).fetchone()
+        configured_lookback = row[0] if row is not None else None
+    bounded_hours = _bounded_lookback_hours(
+        lookback_hours if lookback_hours is not None else configured_lookback
+    )
     bounded_score = _bounded_score(minimum_score)
     bounded_display_limit = _bounded_display_limit(display_limit)
     normalized_sort_by = _normalized_sort_by(sort_by)
-    missing_tables = [name for name in _REQUIRED_TABLES if name not in _table_names(con)]
+    missing_tables = [name for name in _REQUIRED_TABLES if name not in table_names]
     if missing_tables:
         return _unavailable(
             lookback_hours=bounded_hours,
