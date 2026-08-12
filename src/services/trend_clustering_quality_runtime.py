@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from functools import wraps
 from typing import Any
 
@@ -12,7 +13,49 @@ from src.services.trend_clustering_quality_sample_service import (
 )
 
 
-def _set_new_sample_action(report: dict[str, Any]) -> None:
+def _parse_diagnostic_time(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _current_snapshot_is_newer_than_job(quality: dict[str, Any]) -> bool:
+    """현재 군집 스냅샷 전체가 최신 기록 작업 뒤에 다시 계산됐는지 확인합니다."""
+    if str(quality.get("reason") or "") != "cluster_snapshot_changed_since_job":
+        return False
+
+    cluster_min_at = _parse_diagnostic_time(quality.get("cluster_snapshot_min_at"))
+    job_finished_at = _parse_diagnostic_time(quality.get("job_finished_at"))
+    if cluster_min_at is None or job_finished_at is None:
+        return False
+
+    try:
+        return cluster_min_at > job_finished_at + timedelta(seconds=5)
+    except TypeError:
+        return False
+
+
+def _set_unreliable_quality_action(
+    report: dict[str, Any],
+    quality: dict[str, Any],
+) -> None:
+    if _current_snapshot_is_newer_than_job(quality):
+        report["next_action"] = {
+            "label": "현재 군집 스냅샷 점검",
+            "reason": (
+                "최신 기록 2단계 군집 작업보다 현재 군집 스냅샷 전체가 더 나중에 "
+                "계산되어 그 작업의 품질 표본을 현재 결과와 직접 비교할 수 없습니다. "
+                "이는 현재 순위가 오래됐다는 뜻이 아니므로 현재 스냅샷의 읽기 전용 "
+                "진단을 우선하고, 2단계 품질 비교가 실제로 필요할 때만 새 군집 표본을 "
+                "확보합니다."
+            ),
+        }
+        return
+
     report["next_action"] = {
         "label": "새 군집 표본 확보",
         "reason": (
@@ -37,7 +80,7 @@ def reconcile_clustering_quality_next_action(
         if bool(quality.get("available")) and not bool(
             quality.get("reconstruction_reliable")
         ):
-            _set_new_sample_action(report)
+            _set_unreliable_quality_action(report, quality)
         return
 
     if label != "현재 설정 유지":
@@ -54,7 +97,7 @@ def reconcile_clustering_quality_next_action(
         return
 
     if not bool(quality.get("reconstruction_reliable")):
-        _set_new_sample_action(report)
+        _set_unreliable_quality_action(report, quality)
         return
 
     normalized_baseline = dict(baseline or {})
