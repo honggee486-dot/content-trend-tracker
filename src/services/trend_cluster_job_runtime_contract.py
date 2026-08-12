@@ -14,6 +14,46 @@ from src.services.trend_cluster_token_runtime import (
 CLUSTERING_ADAPTIVE_JOB_STALE_MINUTES = 90
 
 
+def _install_ranking_only_refresh_contract(job_module: Any) -> None:
+    """미처리 원문이 없어도 순위 서명 변경은 빠른 종료 전에 반영합니다.
+
+    정책·점수 규칙만 바뀐 경우 준비 단계는 ``ready``지만 미처리 원문 수는 0일 수
+    있습니다. 기존 작업 루프는 이 상태를 바로 종료하므로 새 순위 서명과 기존 군집의
+    재점수가 저장되지 않았습니다. 선택 원문이 비어 있으면 계산 단계가 외부 군집 API를
+    호출하지 않으므로, 같은 짧은 DB 연결 안에서 기존 군집만 재점수하고 서명을 저장한
+    뒤 원래 빠른 종료 흐름을 그대로 사용합니다.
+    """
+    original_prepare = getattr(job_module, "prepare_trend_ranking_rebuild", None)
+    if not callable(original_prepare) or getattr(
+        original_prepare,
+        "_trend_cluster_ranking_only_refresh_contract",
+        False,
+    ):
+        return
+
+    @wraps(original_prepare)
+    def prepare_with_ranking_only_refresh(con, *args, **kwargs):
+        preparation = original_prepare(con, *args, **kwargs)
+        if str(getattr(preparation, "status", "") or "") != "ready":
+            return preparation
+        if int(getattr(preparation, "pending_item_count", 0) or 0) > 0:
+            return preparation
+        if tuple(getattr(preparation, "selected_items", ()) or ()):
+            return preparation
+
+        calculate = getattr(job_module, "calculate_prepared_trend_rankings", None)
+        finalize = getattr(job_module, "finalize_prepared_trend_rankings", None)
+        if not callable(calculate) or not callable(finalize):
+            return preparation
+
+        calculation = calculate(preparation)
+        finalize(con, calculation)
+        return preparation
+
+    prepare_with_ranking_only_refresh._trend_cluster_ranking_only_refresh_contract = True  # type: ignore[attr-defined]
+    job_module.prepare_trend_ranking_rebuild = prepare_with_ranking_only_refresh
+
+
 def install_job_token_contract(
     job_module: Any,
     *,
@@ -69,4 +109,5 @@ def install_job_token_contract(
         token_create._trend_cluster_token_contract = True  # type: ignore[attr-defined]
         job_module.create_clustering_job = token_create
 
+    _install_ranking_only_refresh_contract(job_module)
     install_job_progress_contract(job_module)
