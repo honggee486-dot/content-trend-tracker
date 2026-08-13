@@ -35,7 +35,7 @@
 - **Gemini 주제 방향**: `src/config.py`, `gemini_*`, `topic_angle_*`, 관련 생성·저장 서비스와 테스트. 운영 표본 판단까지 바꾸는 경우에만 읽기 전용 운영 진단 경로를 추가 확인한다.
 - **읽기 전용 운영 진단**: `scripts/report_operation_diagnostics.py`, `src/services/operation_diagnostic_report_service.py`, 관련 `*_diagnostic_*` 서비스와 `docs/P2_OPERATION_DIAGNOSTIC.md`. 군집 품질·baseline 진단이 포함되면 `src/__init__.py`가 설치하는 관련 `trend_clustering_*_runtime.py`도 함께 확인한다.
 - **앱 실행·웹 업데이트·운영 로그**: `app.py`, `run_app.bat`, `stop_app.bat`, `scripts/app_supervisor.ps1`, `web_update_*`, `program_log_*`, 관련 `*_runtime.py`, `docs/APP_RUNTIME.md`, `docs/WEB_UPDATE.md`, `docs/OPERATION_LOGS.md`.
-- **제작 흐름·발행 보조**: `workflow_navigation_service.py`, `content_pack_*`, `ai_result_parser.py`, `draft_*`, `fact_check_*`, `publish_*`와 해당 UI. 플랫폼 연동을 건드릴 때만 `chrome_extension/` 또는 Blogger 관련 코드를 추가 확인한다.
+- **제작 흐름·발행 보조**: `workflow_navigation_service.py`, `content_pack_*`, `ai_result_parser.py`, `draft_*`, `fact_check_*`, `publish_*`, `adsense_candidate_*`, `trend_blog_recommendation_*`, `src/trend_candidate_blog_recommendation_ui.py`와 해당 테스트. 플랫폼 연동을 건드릴 때만 `chrome_extension/` 또는 Blogger 관련 코드를 추가 확인한다.
 - **DB 스키마·마이그레이션**: `src/database.py`, 영향을 받는 서비스, `tests/test_database.py`와 해당 임시 DB 테스트. 실제 DB로 마이그레이션 시험하지 않는다.
 - **적용 도구·개발 하네스**: `AGENTS.md`, `docs/AGENT_TEST_HARNESS.md`, `docs/HARNESS_LESSONS.md`, `run_agent_harness.bat`, `scripts/check_harness.ps1`, `scripts/agent_test_harness.py`, `apply_update.bat`, `scripts/apply_update_work.ps1`, `scripts/apply_update_release.ps1`, `scripts/apply_update.ps1`과 관련 계약 테스트.
 - **Public 공개 준비**: `.gitignore`, `.env.example`, `docs/PUBLIC_READINESS.md`, `scripts/check_public_readiness.py`, 공개 대상 문서와 GitHub branch/tag/PR/Actions 메타데이터. 실제 visibility 변경과 history rewrite는 안전 검증과 별도 작업으로 분리한다.
@@ -47,6 +47,7 @@
 - `stop_app.bat`은 등록 PID와 시작 시각이 맞는 프로세스만 종료하며 모든 Python·Streamlit 프로세스를 일괄 종료하지 않는다.
 - 웹 업데이트는 현재 supervisor에 적용 요청을 전달하고 같은 supervisor가 적용·재시작을 담당한다. 세부 계약은 `docs/APP_RUNTIME.md`를 따른다.
 - `apply_update.bat work/<다음 버전>`은 깨끗한 작업 트리에서 작업 브랜치를 비강제 fast-forward하고 검증할 뿐 로컬·원격 `main`을 merge·push하지 않는다.
+- 작업 브랜치 검증 범위는 누적 `main..work` 전체가 아니라 실제 적용 직전 `beforeHead..targetHead` 증분 diff를 사용한다. 조상 관계가 아니거나 diff 계산에 실패하면 안전하게 중단하거나 전체 검증으로 fallback한다.
 - 최종 릴리스 적용은 `main` 또는 깨끗한 `work/*` 브랜치에서 시작할 수 있다. 깨끗한 `work/*`에서 시작하면 `scripts/apply_update_release.ps1`이 `main` 전환을 안전하게 담당하고, 실패 시 가능하면 원래 작업 브랜치로 복귀한다. 사용자가 릴리스 전에 수동으로 `main`으로 전환하는 것을 전제로 하지 않는다.
 - 최종 반영 엔진은 최신 `origin/main` 대비 `behind 0, ahead 1` 단일 최종 커밋만 허용한다.
 - 강제 push, `reset --hard`, `git clean -fd`, 자동 stash, 강제 checkout과 자동 충돌 해결을 사용하지 않는다.
@@ -62,19 +63,21 @@
 - Gemini 주제 방향: `.\run_agent_harness.bat topic-angles`
 - 읽기 전용 운영 진단·진단 CLI: `.\run_agent_harness.bat diagnostics`
 - 앱 supervisor·웹 업데이트·운영 로그: `.\run_agent_harness.bat operations`
-- AI 요청서→AI 결과→편집→발행 보조의 상태·이동 계약: `.\run_agent_harness.bat workflow`
+- AI 요청서→AI 결과→편집→발행 보조와 AdSense 후보/블로그 추천 표시: `.\run_agent_harness.bat workflow`
 - 하네스·적용 도구 자체: `.\run_agent_harness.bat harness`
 - Public 공개 준비: `python -m pytest -q -p no:cacheprovider tests/test_public_repository_readiness.py`; 실제 전체 refs Secret 검사는 로컬에서 `python scripts/check_public_readiness.py`로 별도 실행한다.
 - 여러 영역을 동시에 바꾼 경우 필요한 시나리오를 함께 지정한다. `all`은 광범위한 운영 계약 변경이나 하네스 전체 점검 때 사용한다.
 - 개별 어댑터, 백업·발행처럼 전용 시나리오가 없는 영역은 해당 `tests/test_*.py`를 직접 선택한다.
-- 문서만 바꾸고 코드 계약이 변하지 않았다면 `python scripts/check_text_hygiene.py`와 관련 문서 계약 테스트를 우선한다. 제품 코드·하네스·운영 계약 변경은 최종적으로 아래 전체 검증까지 수행한다.
+- 문서만 바꾸고 코드 계약이 변하지 않았다면 `python scripts/check_text_hygiene.py`와 관련 문서 계약 테스트를 우선한다.
 
 ## 하네스 확장 경계
 
-- 지원 시나리오·별칭과 테스트 묶음의 단일 기준은 `scripts/agent_test_harness.py`다. BAT와 PowerShell 진입점은 실행 환경과 인자 전달만 담당하며 같은 목록을 중복 관리하지 않는다.
-- 새 테스트가 기존 시나리오의 책임에 들어가면 새 시나리오를 만들지 말고 기존 묶음을 확장한다.
+- 지원 시나리오·별칭·테스트 묶음과 작업 브랜치용 단순 파일 분류표의 단일 기준은 `scripts/agent_test_harness.py`다. BAT와 PowerShell 진입점은 실행 환경·인자 전달·종료 코드만 담당하며 같은 목록을 중복 관리하지 않는다.
+- 새 테스트나 새 파일이 기존 시나리오 책임에 들어가면 새 시나리오를 만들지 말고 `SCENARIO_TESTS`와 `classify_file()`의 해당 경계를 함께 확장한다. 실제 대표 diff가 selective로 유지되는 계약 테스트도 같이 추가한다.
+- 핵심 파일, 분류되지 않은 파일, 3개 이상 영역에 걸친 변경은 작업 브랜치 적용에서 전체 pytest로 fallback한다. 안전 경계를 낮추기 위해 억지로 분류하지 않는다.
 - 여러 테스트가 반복해서 함께 변경되고 별도 확인 경로가 필요한 독립 영역이 생길 때만 새 시나리오를 추가한다. 단일 파일·일회성 검증은 직접 pytest로 유지한다.
-- 시나리오를 추가하면 하네스 계약 테스트와 `docs/AGENT_TEST_HARNESS.md`의 라우팅을 함께 갱신한다. 자동 파일 분류기나 Hook은 명확한 반복 비용이 확인되기 전에는 추가하지 않는다.
+- 시나리오를 추가하면 하네스 계약 테스트와 `docs/AGENT_TEST_HARNESS.md`의 라우팅을 함께 갱신한다.
+- 현재의 명시적 파일 분류표보다 복잡한 의존성 그래프, Git Hook, 자동 Hook 기반 테스트 선택, 다중 Agent 오케스트레이션은 명확한 반복 비용과 검증 이득이 확인되기 전에는 추가하지 않는다.
 
 ## Agent 하네스와 최종 검증
 
@@ -83,5 +86,6 @@
 - 빠른 구문 검사: `python -m compileall -q app.py src tests scripts`
 - 텍스트 검사: `python scripts/check_text_hygiene.py`
 - 전체 회귀: `python -m pytest -q -p no:cacheprovider`
-- GitHub CI와 `apply_update`의 전체 검증은 최종 게이트로 유지한다. 이미 유효하게 통과했고 이후 영향을 받지 않은 검증을 이유 없이 반복하지 않는다.
+- 개발 중 `apply_update.bat work/*`는 증분 diff에 따라 `no_op / doc_only / selective / fallback_all`을 선택한다. 릴리스·광범위 변경·핵심/불확실 변경의 최종 게이트에서는 전체 회귀를 유지한다.
+- GitHub CI의 전체 회귀는 독립 최종 게이트로 유지하되, 이미 유효하게 통과했고 이후 영향을 받지 않은 검증을 이유 없이 수동 반복하지 않는다.
 - 최종 diff에서 관련 문서와 보호 파일 포함 여부를 확인한다.
