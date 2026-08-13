@@ -29,11 +29,52 @@ def display_name_setting_key(channel_key: str) -> str:
     return f"{DISPLAY_NAME_SETTING_PREFIX}{normalized}"
 
 
+def _profile_name_for_channel(
+    con: duckdb.DuckDBPyConnection,
+    channel_key: str,
+) -> str:
+    normalized = str(channel_key or "").strip()
+    if not normalized:
+        return ""
+    try:
+        if normalized == TISTORY_CHANNEL_KEY:
+            row = con.execute(
+                """
+                SELECT profile_name
+                FROM blog_profiles
+                WHERE platform = 'tistory'
+                  AND is_active = TRUE
+                ORDER BY is_default DESC, updated_at DESC, profile_name
+                LIMIT 1
+                """
+            ).fetchone()
+        else:
+            row = con.execute(
+                """
+                SELECT p.profile_name
+                FROM blog_profile_strategies s
+                JOIN blog_profiles p ON p.blog_profile_id = s.blog_profile_id
+                WHERE s.strategy_code = ?
+                  AND p.is_active = TRUE
+                LIMIT 1
+                """,
+                [normalized],
+            ).fetchone()
+    except Exception:
+        return ""
+    return str(row[0] or "").strip() if row is not None else ""
+
+
 def get_recommendation_display_name(
     con: duckdb.DuckDBPyConnection,
     channel_key: str,
 ) -> str:
-    return str(get_setting(con, display_name_setting_key(channel_key), "") or "").strip()
+    override = str(
+        get_setting(con, display_name_setting_key(channel_key), "") or ""
+    ).strip()
+    if override:
+        return override
+    return _profile_name_for_channel(con, channel_key)
 
 
 def set_recommendation_display_name(
@@ -138,8 +179,8 @@ def build_trend_blog_recommendation_labels(
     """Build a display-only blog hint for visible trend candidates.
 
     Existing AI direction/profile text is reused when available; no external API is
-    called. Display names are optional settings. When a name is empty the label is
-    intentionally just ``B:``, ``N:`` or ``T:``.
+    called. A saved recommendation name overrides the current blog profile name.
+    When neither name exists the label is intentionally just ``B:``, ``N:`` or ``T:``.
     """
     visible_rows = [dict(row) for row in rows]
     if not visible_rows:

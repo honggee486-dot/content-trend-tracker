@@ -252,19 +252,26 @@ def render_blog_recommendation_name_settings(con, *, st_module) -> None:
 
     st_module.markdown("#### 글감 목록 추천 표시 이름")
     st_module.caption(
-        "실제 블로그 이름을 선택 입력하세요. 글감 목록에는 B:/N:/T: 뒤에 이 이름을 표시하며, "
-        "비워 두면 B:, N:, T:처럼 플랫폼 문자만 표시합니다. 내부 발행 전략 이름은 바뀌지 않습니다."
+        "기본값은 위에서 주소와 함께 저장한 블로그 프로필 이름입니다. "
+        "글감 목록에서 다른 이름으로 표시하고 싶을 때만 바꾸세요. "
+        "블로그 프로필 이름도 없으면 B:, N:, T:처럼 플랫폼 문자만 표시합니다."
     )
-    values: dict[str, str] = {}
+    values: dict[str, tuple[str, str]] = {}
     with st_module.form("trend_blog_recommendation_display_names"):
         for channel_key, platform, prefix, role_name in settings_rows:
             current = get_recommendation_display_name(con, channel_key)
-            values[channel_key] = st_module.text_input(
-                f"{prefix}: · {role_name}",
-                value=current,
-                placeholder=f"비워 두면 {format_recommended_blog_label(platform)}",
-                key=f"trend_blog_display_name_{channel_key}",
-                help="실제 블로그에서 보이는 이름만 입력합니다. 추천 분류 규칙과 연결 주소에는 영향을 주지 않습니다.",
+            values[channel_key] = (
+                st_module.text_input(
+                    f"{prefix}: · {role_name}",
+                    value=current or role_name,
+                    placeholder=f"블로그 이름이 없으면 {format_recommended_blog_label(platform)}",
+                    key=f"trend_blog_display_name_{channel_key}",
+                    help=(
+                        "기본은 블로그 프로필 이름을 그대로 사용합니다. "
+                        "추천 목록에서만 다른 이름을 쓰고 싶을 때 수정합니다."
+                    ),
+                ),
+                role_name,
             )
         submitted = st_module.form_submit_button(
             "추천 표시 이름 저장",
@@ -272,8 +279,14 @@ def render_blog_recommendation_name_settings(con, *, st_module) -> None:
             width="stretch",
         )
     if submitted:
-        for channel_key, display_name in values.items():
-            set_recommendation_display_name(con, channel_key, display_name)
+        for channel_key, (display_name, role_name) in values.items():
+            normalized_display = str(display_name or "").strip()
+            normalized_role = str(role_name or "").strip()
+            set_recommendation_display_name(
+                con,
+                channel_key,
+                "" if normalized_display == normalized_role else normalized_display,
+            )
         st_module.success("글감 목록 추천 표시 이름을 저장했습니다.")
         st_module.rerun()
 

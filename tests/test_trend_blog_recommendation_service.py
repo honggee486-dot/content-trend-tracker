@@ -38,6 +38,29 @@ def _connection() -> duckdb.DuckDBPyConnection:
     return con
 
 
+def _create_blog_profile_tables(con: duckdb.DuckDBPyConnection) -> None:
+    con.execute(
+        """
+        CREATE TABLE blog_profiles (
+            blog_profile_id VARCHAR PRIMARY KEY,
+            profile_name VARCHAR,
+            platform VARCHAR,
+            is_default BOOLEAN,
+            is_active BOOLEAN,
+            updated_at TIMESTAMP
+        )
+        """
+    )
+    con.execute(
+        """
+        CREATE TABLE blog_profile_strategies (
+            blog_profile_id VARCHAR PRIMARY KEY,
+            strategy_code VARCHAR NOT NULL UNIQUE
+        )
+        """
+    )
+
+
 def test_platform_prefix_labels_keep_blank_name_visible() -> None:
     assert format_recommended_blog_label("blogger", "요즘화제") == "B:요즘화제"
     assert format_recommended_blog_label("naver_blog", "") == "N:"
@@ -53,6 +76,66 @@ def test_recommendation_display_name_is_optional_setting() -> None:
     assert get_recommendation_display_name(con, "blogger_current") == "요즘화제"
     set_recommendation_display_name(con, "blogger_current", "")
     assert get_recommendation_display_name(con, "blogger_current") == ""
+
+
+def test_recommendation_display_name_falls_back_to_current_blog_profile_name() -> None:
+    con = _connection()
+    _create_blog_profile_tables(con)
+    con.execute(
+        """
+        INSERT INTO blog_profiles VALUES
+            ('blog-life', '생활자료', 'blogger', FALSE, TRUE, CURRENT_TIMESTAMP)
+        """
+    )
+    con.execute(
+        """
+        INSERT INTO blog_profile_strategies VALUES ('blog-life', 'blogger_life')
+        """
+    )
+
+    assert get_recommendation_display_name(con, "blogger_life") == "생활자료"
+
+    set_recommendation_display_name(con, "blogger_life", "생활 정보 노트")
+    assert get_recommendation_display_name(con, "blogger_life") == "생활 정보 노트"
+
+    set_recommendation_display_name(con, "blogger_life", "")
+    assert get_recommendation_display_name(con, "blogger_life") == "생활자료"
+
+
+def test_tistory_display_name_falls_back_to_active_profile_name() -> None:
+    con = _connection()
+    _create_blog_profile_tables(con)
+    con.execute(
+        """
+        INSERT INTO blog_profiles VALUES
+            ('blog-tistory', '기록장', 'tistory', TRUE, TRUE, CURRENT_TIMESTAMP)
+        """
+    )
+
+    assert get_recommendation_display_name(con, TISTORY_CHANNEL_KEY) == "기록장"
+
+
+def test_trend_list_routes_using_profile_name_without_duplicate_display_setting() -> None:
+    con = _connection()
+    _create_blog_profile_tables(con)
+    con.execute(
+        """
+        INSERT INTO blog_profiles VALUES
+            ('blog-life', '생활자료', 'blogger', FALSE, TRUE, CURRENT_TIMESTAMP)
+        """
+    )
+    con.execute(
+        """
+        INSERT INTO blog_profile_strategies VALUES ('blog-life', 'blogger_life')
+        """
+    )
+
+    labels = build_trend_blog_recommendation_labels(
+        con,
+        [{"cluster_id": "life-1", "주제": "정부 지원금 신청 자격과 신청 방법"}],
+    )
+
+    assert labels["life-1"] == "B:생활자료"
 
 
 def test_trend_list_routes_using_saved_display_names_and_ai_profile_context() -> None:
