@@ -74,7 +74,7 @@ def test_policy_version_is_explicit_and_changes_ranking_signature() -> None:
     first = fake._trend_ranking_signature_context()["signature"]
     second = fake._trend_ranking_signature_context()["signature"]
 
-    assert TREND_SOURCE_REVIEW_POLICY_VERSION == "2"
+    assert TREND_SOURCE_REVIEW_POLICY_VERSION == "3"
     assert first != "base"
     assert first == second
 
@@ -126,6 +126,31 @@ def test_strong_specific_youtube_signal_becomes_visible_review_not_recommended()
     assert scored["recommendation_status"] == "review"
     assert float(scored["score"]) >= 30.0
     assert float(scored["score"]) <= 50.0
+    assert any("YouTube 단독" in reason for reason in scored["reasons"])
+
+
+def test_descriptive_youtube_sentence_is_not_misclassified_as_entity_only() -> None:
+    title = "로드뷰 자동차를 봤을때 꼭 해야하는 것"
+    item = _item(
+        "youtube",
+        title,
+        external_id="youtube-descriptive-sentence",
+        signal_value=9.0,
+        metadata={
+            "signal_type": "emerging_topic",
+            "topic_score": 9.0,
+            "views_per_hour": 12_000,
+            "view_delta": 80_000,
+        },
+    )
+
+    install_trend_source_review_contract(discovery)
+    assert discovery._is_entity_only_title(title) is False
+    assert discovery._is_entity_only_title("송영길") is True
+    assert discovery._is_entity_only_title("트로이 전쟁") is True
+
+    scored = _score(title, [item])
+    assert scored["recommendation_status"] == "review"
     assert any("YouTube 단독" in reason for reason in scored["reasons"])
 
 

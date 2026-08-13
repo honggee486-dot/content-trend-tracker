@@ -62,6 +62,33 @@ def install_trend_source_review_contract(discovery_module: Any | None = None) ->
         context_with_review_policy._trend_source_review_signature_contract = True  # type: ignore[attr-defined]
         discovery_module._trend_ranking_signature_context = context_with_review_policy
 
+    # 기존 판정은 고정 사건 단어가 없는 짧은 제목을 모두 단일 엔터티로 보므로
+    # "로드뷰 자동차를 봤을때 꼭 해야하는 것" 같은 설명형 문장도 잘못 막을 수 있습니다.
+    # 의미 토큰이 4개 이상인 제목은 단일 이름·브랜드명보다 설명형 문장으로 취급하되,
+    # 이후 품질·글감기회·확산 강도 기준은 그대로 적용합니다.
+    original_entity_only = getattr(discovery_module, "_is_entity_only_title", None)
+    if callable(original_entity_only) and not getattr(
+        original_entity_only,
+        "_trend_source_review_entity_context_contract",
+        False,
+    ):
+
+        @wraps(original_entity_only)
+        def entity_only_with_descriptive_context(
+            title: str,
+            editorial_identities: set[str] | None = None,
+        ) -> bool:
+            detected = bool(original_entity_only(title, editorial_identities))
+            if not detected:
+                return False
+            clean = discovery_module._clean_title(str(title or ""))
+            if len(discovery_module._tokens(clean)) >= 4:
+                return False
+            return True
+
+        entity_only_with_descriptive_context._trend_source_review_entity_context_contract = True  # type: ignore[attr-defined]
+        discovery_module._is_entity_only_title = entity_only_with_descriptive_context
+
     original = getattr(discovery_module, "_score_cluster", None)
     if not callable(original) or getattr(original, "_trend_source_review_contract", False):
         return
