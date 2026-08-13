@@ -6,12 +6,15 @@ from typing import Any
 import src.trend_candidate_blog_recommendation_ui as recommendation_ui
 
 
+_MASTER_DETAIL_SOURCE_SPEC = (1.55, 1.75)
+_MASTER_DETAIL_WIDE_LIST_SPEC = [1.70, 1.60]
+
 _CANDIDATE_LAYOUT_CSS = """
 <style>
 .st-key-trend_candidate_table_header [data-testid="stHorizontalBlock"],
 [class*="st-key-trend_candidate_row_"] [data-testid="stHorizontalBlock"] {
-    grid-template-columns: 36px 52px 96px 62px 48px minmax(210px, 1fr) 48px 36px 36px 42px 64px 48px !important;
-    min-width: 780px !important;
+    grid-template-columns: 36px 52px 104px 54px 48px minmax(252px, 1fr) 48px 44px 44px 44px 44px 44px !important;
+    min-width: 814px !important;
 }
 .candidate-tbl-hdr {
     font-size: 0.76rem !important;
@@ -49,8 +52,8 @@ _CANDIDATE_LAYOUT_CSS = """
     opacity: 0.88;
 }
 .trend-adsense-column {
-    font-size: 0.67rem !important;
-    font-weight: 720 !important;
+    font-size: 0.84rem !important;
+    font-weight: 780 !important;
     cursor: help;
 }
 .trend-blog-empty,
@@ -61,6 +64,12 @@ _CANDIDATE_LAYOUT_CSS = """
 .trend-adsense-column.adsense-fit { opacity: 0.96; }
 .trend-adsense-column.adsense-review { opacity: 0.78; }
 .trend-adsense-column.adsense-avoid { opacity: 0.64; }
+.trend-source-header {
+    font-size: 0.68rem !important;
+    line-height: 0.78rem !important;
+    white-space: normal !important;
+    text-align: center !important;
+}
 @media (max-width: 1440px) {
     [class*="st-key-trend_candidate_row_"] .stButton > button p {
         font-size: 0.80rem !important;
@@ -96,6 +105,17 @@ def _status_parts(value: object) -> tuple[str, str, dict[str, str], str] | None:
     return status_match.group(1), blog_label, adsense, ai_class
 
 
+def adsense_display_symbol(label: object) -> str:
+    normalized = str(label or "").strip()
+    if normalized.endswith("적합"):
+        return "○"
+    if normalized.endswith("피함"):
+        return "×"
+    if normalized:
+        return "△"
+    return "-"
+
+
 def split_candidate_status_markdown(value: object) -> tuple[object, object, object] | None:
     if not isinstance(value, str):
         return None
@@ -105,8 +125,8 @@ def split_candidate_status_markdown(value: object) -> tuple[object, object, obje
             '<div class="candidate-tbl-hdr cell-center">블로그</div>',
             (
                 '<div class="candidate-tbl-hdr cell-center" '
-                'title="A:적합=초기 심사 우선 후보 · A:검토=최신성·독창성 보강 후 사용 · '
-                'A:피함=초기 심사 전 보수적 회피 · 승인 보장은 아님">애드센스</div>'
+                'title="○=초기 심사 우선 후보 · △=최신성·독창성 보강 후 사용 · '
+                '×=초기 심사 전 보수적 회피 · 승인 보장은 아님">애드센스</div>'
             ),
         )
     if "candidate-tbl-cell cell-center status-tag" not in value:
@@ -122,8 +142,12 @@ def split_candidate_status_markdown(value: object) -> tuple[object, object, obje
 
     adsense_label = str(adsense.get("label") or "").strip()
     adsense_reason = str(adsense.get("reason") or "").strip()
-    safe_adsense = html.escape(adsense_label) if adsense_label else "-"
-    safe_reason = html.escape(adsense_reason or "AdSense 보조 판단 없음", quote=True)
+    adsense_symbol = adsense_display_symbol(adsense_label)
+    tooltip_parts = [part for part in (adsense_label, adsense_reason) if part]
+    safe_reason = html.escape(
+        " · ".join(tooltip_parts) or "AdSense 보조 판단 없음",
+        quote=True,
+    )
     adsense_class = (
         recommendation_ui._adsense_css_class(adsense_label) if adsense_label else ""
     )
@@ -140,7 +164,7 @@ def split_candidate_status_markdown(value: object) -> tuple[object, object, obje
         ),
         (
             f'<div class="candidate-tbl-cell trend-adsense-column {adsense_class}{adsense_empty}" '
-            f'title="{safe_reason}">{safe_adsense}</div>'
+            f'title="{safe_reason}">{adsense_symbol}</div>'
         ),
     )
 
@@ -155,21 +179,37 @@ def rewrite_role_header(value: object, role: str) -> object:
         ),
         "daum": (
             'candidate-tbl-hdr cell-right">Daum</div>',
-            'candidate-tbl-hdr cell-right">DAUM</div>',
+            'candidate-tbl-hdr cell-right trend-source-header">DAUM</div>',
         ),
         "youtube": (
             'candidate-tbl-hdr cell-right">YouTube</div>',
-            'candidate-tbl-hdr cell-right">YOUTUBE</div>',
+            'candidate-tbl-hdr cell-right trend-source-header">YOU<br>TUBE</div>',
         ),
         "google": (
             'candidate-tbl-hdr cell-right">Google Trends</div>',
-            'candidate-tbl-hdr cell-right">GOOGLETRENDS</div>',
+            'candidate-tbl-hdr cell-right trend-source-header">GOOGLE<br>TRENDS</div>',
+        ),
+        "wikipedia": (
+            'candidate-tbl-hdr cell-right">위키백과</div>',
+            'candidate-tbl-hdr cell-right trend-source-header">위키백과</div>',
         ),
     }
     pair = replacements.get(role)
     if pair and pair[0] in value:
         return value.replace(*pair)
     return value
+
+
+def _is_master_detail_spec(spec: object) -> bool:
+    if not isinstance(spec, (list, tuple)) or len(spec) != 2:
+        return False
+    try:
+        return all(
+            abs(float(actual) - expected) < 0.001
+            for actual, expected in zip(spec, _MASTER_DETAIL_SOURCE_SPEC, strict=True)
+        )
+    except (TypeError, ValueError):
+        return False
 
 
 class _ColumnProxy:
@@ -219,6 +259,17 @@ def _patched_columns(self, *args, **kwargs):
     st_module = self._target
     spec = args[0] if args else kwargs.get("spec")
 
+    if _is_master_detail_spec(spec):
+        call_args = list(args)
+        if call_args:
+            call_args[0] = _MASTER_DETAIL_WIDE_LIST_SPEC
+            columns = st_module.columns(*call_args, **kwargs)
+        else:
+            adjusted_kwargs = dict(kwargs)
+            adjusted_kwargs["spec"] = _MASTER_DETAIL_WIDE_LIST_SPEC
+            columns = st_module.columns(**adjusted_kwargs)
+        return [recommendation_ui._CandidateColumnProxy(column) for column in columns]
+
     if isinstance(spec, int) and spec == 10 and kwargs.get("gap") is None:
         call_args = list(args)
         if call_args:
@@ -246,7 +297,7 @@ def _patched_columns(self, *args, **kwargs):
 
 
 def install_trend_blog_recommendation_ui_runtime(*, st_module: Any) -> None:
-    """Keep the original master/detail layout and only refine candidate table columns."""
+    """Keep side-by-side details while giving the candidate list more readable width."""
     del st_module
     proxy_cls = recommendation_ui._CandidateStreamlitProxy
     if getattr(proxy_cls, "_trend_candidate_table_runtime", False):
