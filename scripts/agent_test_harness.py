@@ -88,6 +88,9 @@ SCENARIO_TESTS: dict[str, tuple[str, ...]] = {
         "tests/test_workflow_navigation_state.py",
         "tests/test_content_workflow_scenarios.py",
         "tests/test_chatgpt_request_workflow.py",
+        "tests/test_adsense_candidate_service.py",
+        "tests/test_trend_blog_recommendation_service.py",
+        "tests/test_trend_candidate_blog_recommendation_ui.py",
     ),
     "harness": (
         "tests/test_agent_test_harness.py",
@@ -375,10 +378,16 @@ def classify_file(path_str: str) -> str | None:
         or p_lower.startswith("src/services/draft_")
         or p_lower.startswith("src/services/fact_check_")
         or p_lower.startswith("src/services/publish_")
+        or p_lower.startswith("src/services/adsense_candidate_")
+        or p_lower.startswith("src/services/trend_blog_recommendation_")
+        or p_lower == "src/trend_candidate_blog_recommendation_ui.py"
         or p_lower == "src/services/ai_result_parser.py"
         or p_lower.startswith("tests/test_browser_workflow_")
         or p_lower.startswith("tests/test_workflow_navigation_")
         or p_lower.startswith("tests/test_content_workflow_")
+        or p_lower.startswith("tests/test_adsense_candidate_")
+        or p_lower.startswith("tests/test_trend_blog_recommendation_")
+        or p_lower.startswith("tests/test_trend_candidate_blog_recommendation_")
         or p_lower == "tests/test_chatgpt_request_workflow.py"
     ):
         return "workflow"
@@ -504,7 +513,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.resolve_targets is not None:
         decision = resolve_routing(args.resolve_targets)
-        print(json.dumps(asdict(decision), ensure_ascii=False, indent=2))
+        # apply_update가 PowerShell 7/5.1에서 캡처하므로 라우팅 JSON은 ASCII-safe로 출력합니다.
+        print(json.dumps(asdict(decision), ensure_ascii=True, indent=2))
         return 0
     if args.list:
         print(
