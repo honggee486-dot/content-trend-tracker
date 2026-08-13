@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 
-TREND_SOURCE_REVIEW_POLICY_VERSION = "3"
+TREND_SOURCE_REVIEW_POLICY_VERSION = "4"
 TREND_DISCOVERY_SOURCE_TYPES = frozenset(
     {"youtube", "google_trends", "wikipedia_pageviews"}
 )
