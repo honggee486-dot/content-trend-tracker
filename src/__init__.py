@@ -114,9 +114,13 @@ if "streamlit" in sys.modules:
     from src.trend_candidate_blog_recommendation_ui import (
         install_trend_candidate_blog_recommendation_ui,
     )
+    from src.services.trend_blog_recommendation_ui_runtime import (
+        install_trend_blog_recommendation_ui_runtime,
+    )
 
     install_clustering_settings_ui_contract(_ui_module)
     install_trend_candidate_blog_recommendation_ui(_ui_module)
+    install_trend_blog_recommendation_ui_runtime(st_module=sys.modules["streamlit"])
 
     from src.clustering_batch_log_ui import install_clustering_batch_log_ui
     from src.clustering_job_status_ui import install_clustering_job_status_ui
