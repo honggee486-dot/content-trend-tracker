@@ -93,7 +93,12 @@ def install_trend_source_review_contract(discovery_module: Any | None = None) ->
                 if editorial_identities is not None
                 else discovery_module._editorial_identity_tokens(clean)
             )
-            if len(identities) >= 2 and tokens & _SHORT_EVENT_CONTEXT_TERMS:
+            subject_identities = identities - _SHORT_EVENT_CONTEXT_TERMS
+            if (
+                len(tokens) >= 2
+                and subject_identities
+                and tokens & _SHORT_EVENT_CONTEXT_TERMS
+            ):
                 return False
             return True
 
