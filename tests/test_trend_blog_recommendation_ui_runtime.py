@@ -55,32 +55,26 @@ def test_rewrite_role_header_matches_requested_labels() -> None:
     )
 
 
-def test_candidate_css_increases_list_and_selected_detail_fonts() -> None:
-    css = runtime._CANDIDATE_DRAWER_CSS
+def test_candidate_css_keeps_requested_readable_font_sizes_without_drawer() -> None:
+    css = runtime._CANDIDATE_LAYOUT_CSS
+
     assert "font-size: 0.76rem" in css
     assert "font-size: 0.81rem" in css
     assert "font-size: 0.84rem" in css
-    assert "font-size: 1.22rem" in css
-    assert "font-size: 1.06rem" in css
+    assert "trend_candidate_detail_drawer" not in css
+    assert "position: fixed" not in css
+    assert "translateX" not in css
 
 
-def test_open_drawer_keeps_columns_through_opportunity_before_overlay() -> None:
-    css = runtime.candidate_drawer_runtime_css(True)
+def test_candidate_css_uses_compact_source_columns_and_wider_title() -> None:
+    css = runtime._CANDIDATE_LAYOUT_CSS
 
-    assert "translateX(0)" in css
     assert (
-        "42px 58px 112px 78px 60px 270px 64px 54px 54px 64px 88px 68px"
+        "36px 52px 96px 62px 48px minmax(210px, 1fr) "
+        "48px 36px 36px 42px 64px 48px"
         in css
     )
-    assert "calc(min(46vw, 760px) + 0.18rem)" in css
-
-
-def test_closed_drawer_moves_offscreen_and_expands_title_column() -> None:
-    css = runtime.candidate_drawer_runtime_css(False)
-
-    assert "translateX(calc(100% + 1.35rem))" in css
-    assert "pointer-events: none" in css
-    assert "minmax(300px, 1fr)" in css
+    assert "min-width: 780px" in css
 
 
 class _FakeBlock:
@@ -107,9 +101,7 @@ class _FakeStreamlit:
         self.session_state: dict[str, object] = {}
         self.column_calls: list[object] = []
         self.column_batches: list[list[_FakeBlock]] = []
-        self.container_keys: list[str] = []
         self.markdowns: list[str] = []
-        self.toggle_button_result = False
         self.rerun_count = 0
 
     def columns(self, spec, *args, **kwargs):
@@ -119,16 +111,9 @@ class _FakeStreamlit:
         self.column_batches.append(batch)
         return batch
 
-    def container(self, *, key, **kwargs):
-        self.container_keys.append(key)
-        return _FakeBlock()
-
     def markdown(self, body, *args, **kwargs):
         self.markdowns.append(str(body))
         return body
-
-    def button(self, *args, **kwargs):
-        return self.toggle_button_result
 
     def rerun(self):
         self.rerun_count += 1
@@ -186,7 +171,19 @@ def test_patched_columns_expands_candidate_table_to_twelve_visual_columns() -> N
     assert ">GOOGLETRENDS</div>" in str(actual[10].markdowns[-1])
 
 
-def test_clicking_title_marks_drawer_open_before_app_rerun() -> None:
+def test_master_detail_columns_keep_original_side_by_side_layout() -> None:
+    fake = _FakeStreamlit()
+    proxy = _ExistingProxy(fake)
+
+    layout = runtime._patched_columns(proxy, [1.55, 1.75], gap="medium")
+
+    assert len(layout) == 2
+    assert fake.column_calls == [[1.55, 1.75]]
+    assert len(fake.column_batches[0]) == 2
+    assert fake.markdowns == []
+
+
+def test_clicking_title_does_not_create_drawer_state_or_extra_rerun() -> None:
     fake = _FakeStreamlit()
     proxy = _ExistingProxy(fake)
     logical = runtime._patched_columns(proxy, 10, gap=None)
@@ -195,23 +192,8 @@ def test_clicking_title_marks_drawer_open_before_app_rerun() -> None:
     clicked = logical[3].button("후보 제목", key="candidate")
 
     assert clicked is True
-    assert fake.session_state[runtime.DETAIL_DRAWER_STATE_KEY] is True
-
-
-def test_master_detail_columns_become_full_width_list_and_right_drawer() -> None:
-    fake = _FakeStreamlit()
-    proxy = _ExistingProxy(fake)
-
-    layout = runtime._patched_columns(proxy, [1.55, 1.75], gap="medium")
-
-    assert len(layout) == 2
-    assert fake.column_calls == []
-    assert fake.container_keys == [
-        "trend_candidate_detail_toggle",
-        "trend_candidate_master_list",
-        "trend_candidate_detail_drawer",
-    ]
-    assert any("translateX(calc(100% + 1.35rem))" in item for item in fake.markdowns)
+    assert fake.session_state == {}
+    assert fake.rerun_count == 0
 
 
 def test_installer_patches_existing_candidate_proxy_once_without_rendering_early() -> None:
@@ -229,10 +211,13 @@ def test_installer_patches_existing_candidate_proxy_once_without_rendering_early
         runtime.install_trend_blog_recommendation_ui_runtime(st_module=fake)
 
         assert Proxy.columns is runtime._patched_columns
-        assert getattr(Proxy, "_trend_candidate_drawer_runtime") is True
+        assert getattr(Proxy, "_trend_candidate_table_runtime") is True
         assert recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS.count(
-            "trend_candidate_detail_drawer"
-        ) >= 1
+            "minmax(210px, 1fr)"
+        ) == 1
+        assert "trend_candidate_detail_drawer" not in (
+            recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS
+        )
         assert fake.markdowns == []
     finally:
         recommendation_ui._CandidateStreamlitProxy = original_proxy
