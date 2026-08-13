@@ -408,4 +408,3 @@ def install_trend_blog_recommendation_ui_runtime(*, st_module: Any) -> None:
     proxy_cls.columns = _patched_columns
     proxy_cls._trend_candidate_drawer_runtime = True
     recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS += _CANDIDATE_DRAWER_CSS
-    st_module.markdown(_CANDIDATE_DRAWER_CSS, unsafe_allow_html=True)
