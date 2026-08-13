@@ -6,22 +6,22 @@ from typing import Any
 import src.trend_candidate_blog_recommendation_ui as recommendation_ui
 
 
-DETAIL_DRAWER_STATE_KEY = "trend_candidate_detail_drawer_open"
-DETAIL_DRAWER_TOGGLE_BUTTON_KEY = "trend_candidate_detail_drawer_toggle_button"
-
-_CANDIDATE_DRAWER_CSS = """
+_CANDIDATE_LAYOUT_CSS = """
 <style>
-.st-key-trend_candidate_master_list {
-    width: 100% !important;
-}
 .st-key-trend_candidate_table_header [data-testid="stHorizontalBlock"],
 [class*="st-key-trend_candidate_row_"] [data-testid="stHorizontalBlock"] {
-    grid-template-columns: 42px 58px 112px 78px 60px minmax(300px, 1fr) 64px 54px 54px 64px 88px 68px !important;
-    min-width: 1120px !important;
+    grid-template-columns: 36px 52px 96px 62px 48px minmax(210px, 1fr) 48px 36px 36px 42px 64px 48px !important;
+    min-width: 780px !important;
 }
-.candidate-tbl-hdr { font-size: 0.76rem !important; }
-.candidate-tbl-cell { font-size: 0.81rem !important; }
-.rank-val { font-size: 0.84rem !important; }
+.candidate-tbl-hdr {
+    font-size: 0.76rem !important;
+}
+.candidate-tbl-cell {
+    font-size: 0.81rem !important;
+}
+.rank-val {
+    font-size: 0.84rem !important;
+}
 [class*="st-key-trend_candidate_row_"] .stButton > button p {
     font-size: 0.84rem !important;
 }
@@ -61,112 +61,11 @@ _CANDIDATE_DRAWER_CSS = """
 .trend-adsense-column.adsense-fit { opacity: 0.96; }
 .trend-adsense-column.adsense-review { opacity: 0.78; }
 .trend-adsense-column.adsense-avoid { opacity: 0.64; }
-.st-key-trend_candidate_detail_drawer {
-    position: fixed !important;
-    top: 7.4rem !important;
-    right: 0.65rem !important;
-    z-index: 1100 !important;
-    width: min(46vw, 760px) !important;
-    max-width: calc(100vw - 2.25rem) !important;
-    height: calc(100vh - 8.15rem) !important;
-    max-height: calc(100vh - 8.15rem) !important;
-    overflow-y: auto !important;
-    overflow-x: visible !important;
-    padding: 0.72rem 0.78rem 1rem !important;
-    border: 1px solid rgba(128, 128, 128, 0.38) !important;
-    border-radius: 0.72rem !important;
-    background: var(--background-color) !important;
-    box-shadow: 0 0.85rem 2.3rem rgba(0, 0, 0, 0.34) !important;
-    box-sizing: border-box !important;
-    transition: transform 0.22s ease, opacity 0.18s ease !important;
-}
-.st-key-trend_candidate_detail_drawer > [data-testid="stVerticalBlock"] {
-    overflow: visible !important;
-}
-.st-key-trend_candidate_detail_toggle {
-    position: fixed !important;
-    top: 8.05rem !important;
-    z-index: 1102 !important;
-    width: auto !important;
-    margin: 0 !important;
-    transition: right 0.22s ease !important;
-}
-.st-key-trend_candidate_detail_toggle [data-testid="stButton"] {
-    width: auto !important;
-}
-.st-key-trend_candidate_detail_toggle .stButton > button {
-    min-height: 2.45rem !important;
-    width: auto !important;
-    padding: 0.32rem 0.62rem !important;
-    border-radius: 0.52rem !important;
-    box-shadow: 0 0.35rem 1rem rgba(0, 0, 0, 0.24) !important;
-    white-space: nowrap !important;
-}
-.st-key-trend_candidate_detail_toggle .stButton > button p {
-    font-size: 0.82rem !important;
-    font-weight: 720 !important;
-    white-space: nowrap !important;
-}
-.st-key-trend_candidate_detail_drawer .st-key-trend_selected_detail h3 {
-    font-size: 1.22rem !important;
-}
-.st-key-trend_candidate_detail_drawer .st-key-trend_selected_detail h4 {
-    font-size: 1.06rem !important;
-}
-.st-key-trend_candidate_detail_drawer .st-key-trend_selected_detail [data-testid="stMarkdownContainer"] p,
-.st-key-trend_candidate_detail_drawer .st-key-trend_selected_detail [data-testid="stMarkdownContainer"] li {
-    font-size: 1.06rem !important;
-}
-.st-key-trend_candidate_detail_drawer .st-key-trend_selected_detail [data-testid="stCaptionContainer"] p {
-    font-size: 0.81rem !important;
-}
-.st-key-trend_candidate_detail_drawer .st-key-trend_selected_detail [data-testid="stRadio"] label p,
-.st-key-trend_candidate_detail_drawer .st-key-trend_selected_detail [data-testid="stCheckbox"] label p {
-    font-size: 0.94rem !important;
-}
-.st-key-trend_candidate_detail_drawer .explainable-metric-label {
-    font-size: 0.76rem !important;
-}
-.st-key-trend_candidate_detail_drawer .explainable-metric-value {
-    font-size: 1.31rem !important;
-}
-.st-key-trend_candidate_detail_drawer .explainable-metric-delta {
-    font-size: 0.70rem !important;
-}
-.st-key-trend_candidate_detail_drawer .explainable-metric-help {
-    font-size: 0.76rem !important;
-}
 @media (max-width: 1440px) {
     [class*="st-key-trend_candidate_row_"] .stButton > button p {
         font-size: 0.80rem !important;
     }
 }
-</style>
-"""
-
-
-def candidate_drawer_runtime_css(opened: bool) -> str:
-    transform = "translateX(0)" if opened else "translateX(calc(100% + 1.35rem))"
-    opacity = "1" if opened else "0"
-    pointer_events = "auto" if opened else "none"
-    toggle_right = "calc(min(46vw, 760px) + 0.18rem)" if opened else "0.45rem"
-    table_columns = (
-        "42px 58px 112px 78px 60px 270px 64px 54px 54px 64px 88px 68px"
-        if opened
-        else "42px 58px 112px 78px 60px minmax(300px, 1fr) 64px 54px 54px 64px 88px 68px"
-    )
-    return f"""
-<style>
-.st-key-trend_candidate_detail_drawer {{
-    transform: {transform} !important;
-    opacity: {opacity} !important;
-    pointer-events: {pointer_events} !important;
-}}
-.st-key-trend_candidate_detail_toggle {{ right: {toggle_right} !important; }}
-.st-key-trend_candidate_table_header [data-testid="stHorizontalBlock"],
-[class*="st-key-trend_candidate_row_"] [data-testid="stHorizontalBlock"] {{
-    grid-template-columns: {table_columns} !important;
-}}
 </style>
 """
 
@@ -225,7 +124,9 @@ def split_candidate_status_markdown(value: object) -> tuple[object, object, obje
     adsense_reason = str(adsense.get("reason") or "").strip()
     safe_adsense = html.escape(adsense_label) if adsense_label else "-"
     safe_reason = html.escape(adsense_reason or "AdSense 보조 판단 없음", quote=True)
-    adsense_class = recommendation_ui._adsense_css_class(adsense_label) if adsense_label else ""
+    adsense_class = (
+        recommendation_ui._adsense_css_class(adsense_label) if adsense_label else ""
+    )
     adsense_empty = " trend-adsense-empty" if not adsense_label else ""
 
     return (
@@ -272,9 +173,8 @@ def rewrite_role_header(value: object, role: str) -> object:
 
 
 class _ColumnProxy:
-    def __init__(self, target: Any, *, st_module: Any, role: str = "") -> None:
+    def __init__(self, target: Any, *, role: str = "") -> None:
         self._target = target
-        self._st_module = st_module
         self._role = role
 
     def __getattr__(self, name: str):
@@ -284,7 +184,6 @@ class _ColumnProxy:
         entered = self._target.__enter__()
         return self if entered is self._target else _ColumnProxy(
             entered,
-            st_module=self._st_module,
             role=self._role,
         )
 
@@ -297,17 +196,6 @@ class _ColumnProxy:
             *args,
             **kwargs,
         )
-
-    def button(self, *args, **kwargs):
-        clicked = self._target.button(*args, **kwargs)
-        if clicked and self._role == "title":
-            was_open = bool(
-                self._st_module.session_state.get(DETAIL_DRAWER_STATE_KEY, False)
-            )
-            self._st_module.session_state[DETAIL_DRAWER_STATE_KEY] = True
-            if not was_open and kwargs.get("type") == "primary":
-                self._st_module.rerun()
-        return clicked
 
 
 class _StatusColumnsProxy:
@@ -327,51 +215,9 @@ class _StatusColumnsProxy:
         return result
 
 
-def _is_master_detail_spec(spec: object) -> bool:
-    if not isinstance(spec, (list, tuple)) or len(spec) != 2:
-        return False
-    try:
-        return abs(float(spec[0]) - 1.55) < 0.001 and abs(float(spec[1]) - 1.75) < 0.001
-    except (TypeError, ValueError):
-        return False
-
-
-def _render_detail_toggle(st_module: Any) -> bool:
-    opened = bool(st_module.session_state.get(DETAIL_DRAWER_STATE_KEY, False))
-    with st_module.container(key="trend_candidate_detail_toggle"):
-        label = "선택한 글감 ▶" if opened else "◀ 선택한 글감"
-        if st_module.button(
-            label,
-            key=DETAIL_DRAWER_TOGGLE_BUTTON_KEY,
-            help=(
-                "선택한 글감 상세를 오른쪽에서 열거나 숨깁니다. "
-                "글감 제목을 새로 선택하면 상세 창이 자동으로 열립니다."
-            ),
-        ):
-            st_module.session_state[DETAIL_DRAWER_STATE_KEY] = not opened
-            st_module.rerun()
-    return opened
-
-
 def _patched_columns(self, *args, **kwargs):
     st_module = self._target
     spec = args[0] if args else kwargs.get("spec")
-
-    if _is_master_detail_spec(spec):
-        opened = _render_detail_toggle(st_module)
-        st_module.markdown(candidate_drawer_runtime_css(opened), unsafe_allow_html=True)
-        return [
-            _ColumnProxy(
-                st_module.container(key="trend_candidate_master_list"),
-                st_module=st_module,
-                role="candidate-list",
-            ),
-            _ColumnProxy(
-                st_module.container(key="trend_candidate_detail_drawer"),
-                st_module=st_module,
-                role="candidate-detail",
-            ),
-        ]
 
     if isinstance(spec, int) and spec == 10 and kwargs.get("gap") is None:
         call_args = list(args)
@@ -383,16 +229,16 @@ def _patched_columns(self, *args, **kwargs):
             adjusted_kwargs["spec"] = 12
             columns = st_module.columns(**adjusted_kwargs)
         return [
-            _ColumnProxy(columns[0], st_module=st_module, role="rank"),
+            _ColumnProxy(columns[0], role="rank"),
             _StatusColumnsProxy((columns[1], columns[2], columns[3])),
-            _ColumnProxy(columns[4], st_module=st_module, role="trend"),
-            _ColumnProxy(columns[5], st_module=st_module, role="title"),
-            _ColumnProxy(columns[6], st_module=st_module, role="opportunity"),
-            _ColumnProxy(columns[7], st_module=st_module, role="naver"),
-            _ColumnProxy(columns[8], st_module=st_module, role="daum"),
-            _ColumnProxy(columns[9], st_module=st_module, role="youtube"),
-            _ColumnProxy(columns[10], st_module=st_module, role="google"),
-            _ColumnProxy(columns[11], st_module=st_module, role="wikipedia"),
+            _ColumnProxy(columns[4], role="trend"),
+            _ColumnProxy(columns[5], role="title"),
+            _ColumnProxy(columns[6], role="opportunity"),
+            _ColumnProxy(columns[7], role="naver"),
+            _ColumnProxy(columns[8], role="daum"),
+            _ColumnProxy(columns[9], role="youtube"),
+            _ColumnProxy(columns[10], role="google"),
+            _ColumnProxy(columns[11], role="wikipedia"),
         ]
 
     columns = st_module.columns(*args, **kwargs)
@@ -400,11 +246,12 @@ def _patched_columns(self, *args, **kwargs):
 
 
 def install_trend_blog_recommendation_ui_runtime(*, st_module: Any) -> None:
-    """Patch the existing candidate UI proxy with a wide table and right-side drawer."""
+    """Keep the original master/detail layout and only refine candidate table columns."""
+    del st_module
     proxy_cls = recommendation_ui._CandidateStreamlitProxy
-    if getattr(proxy_cls, "_trend_candidate_drawer_runtime", False):
+    if getattr(proxy_cls, "_trend_candidate_table_runtime", False):
         return
 
     proxy_cls.columns = _patched_columns
-    proxy_cls._trend_candidate_drawer_runtime = True
-    recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS += _CANDIDATE_DRAWER_CSS
+    proxy_cls._trend_candidate_table_runtime = True
+    recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS += _CANDIDATE_LAYOUT_CSS
