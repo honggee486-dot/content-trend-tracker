@@ -24,7 +24,9 @@ def test_split_candidate_status_markdown_creates_requested_three_columns() -> No
     assert ">추천</div>" in str(headers[0])
     assert ">블로그</div>" in str(headers[1])
     assert ">애드센스</div>" in str(headers[2])
-    assert "승인 보장은 아님" in str(headers[2])
+    assert "○=초기 심사 우선 후보" in str(headers[2])
+    assert "△=최신성·독창성 보강 후 사용" in str(headers[2])
+    assert "×=초기 심사 전 보수적 회피" in str(headers[2])
 
     assert cells is not None
     assert "trend-recommendation-column" in str(cells[0])
@@ -33,8 +35,15 @@ def test_split_candidate_status_markdown_creates_requested_three_columns() -> No
     assert "trend-blog-column" in str(cells[1])
     assert ">B:요즘화제</div>" in str(cells[1])
     assert "trend-adsense-column adsense-review" in str(cells[2])
-    assert ">A:검토</div>" in str(cells[2])
-    assert 'title="시점 의존 후보"' in str(cells[2])
+    assert ">△</div>" in str(cells[2])
+    assert 'title="A:검토 · 시점 의존 후보"' in str(cells[2])
+
+
+def test_adsense_display_symbol_maps_internal_labels() -> None:
+    assert runtime.adsense_display_symbol("A:적합") == "○"
+    assert runtime.adsense_display_symbol("A:검토") == "△"
+    assert runtime.adsense_display_symbol("A:피함") == "×"
+    assert runtime.adsense_display_symbol("") == "-"
 
 
 def test_rewrite_role_header_matches_requested_labels() -> None:
@@ -47,11 +56,14 @@ def test_rewrite_role_header_matches_requested_labels() -> None:
     assert ">DAUM</div>" in runtime.rewrite_role_header(
         '<div class="candidate-tbl-hdr cell-right">Daum</div>', "daum"
     )
-    assert ">YOUTUBE</div>" in runtime.rewrite_role_header(
+    assert ">YOU<br>TUBE</div>" in runtime.rewrite_role_header(
         '<div class="candidate-tbl-hdr cell-right">YouTube</div>', "youtube"
     )
-    assert ">GOOGLETRENDS</div>" in runtime.rewrite_role_header(
+    assert ">GOOGLE<br>TRENDS</div>" in runtime.rewrite_role_header(
         '<div class="candidate-tbl-hdr cell-right">Google Trends</div>', "google"
+    )
+    assert "trend-source-header" in runtime.rewrite_role_header(
+        '<div class="candidate-tbl-hdr cell-right">위키백과</div>', "wikipedia"
     )
 
 
@@ -66,15 +78,15 @@ def test_candidate_css_keeps_requested_readable_font_sizes_without_drawer() -> N
     assert "translateX" not in css
 
 
-def test_candidate_css_uses_compact_source_columns_and_wider_title() -> None:
+def test_candidate_css_uses_equal_source_columns_and_wider_title() -> None:
     css = runtime._CANDIDATE_LAYOUT_CSS
 
     assert (
-        "36px 52px 96px 62px 48px minmax(210px, 1fr) "
-        "48px 36px 36px 42px 64px 48px"
+        "36px 52px 104px 54px 48px minmax(252px, 1fr) "
+        "48px 44px 44px 44px 44px 44px"
         in css
     )
-    assert "min-width: 780px" in css
+    assert "min-width: 814px" in css
 
 
 class _FakeBlock:
@@ -165,20 +177,25 @@ def test_patched_columns_expands_candidate_table_to_twelve_visual_columns() -> N
         '<div class="candidate-tbl-hdr cell-right">Google Trends</div>',
         unsafe_allow_html=True,
     )
+    logical[9].markdown(
+        '<div class="candidate-tbl-hdr cell-right">위키백과</div>',
+        unsafe_allow_html=True,
+    )
     assert ">기획</div>" in str(actual[6].markdowns[-1])
     assert ">DAUM</div>" in str(actual[8].markdowns[-1])
-    assert ">YOUTUBE</div>" in str(actual[9].markdowns[-1])
-    assert ">GOOGLETRENDS</div>" in str(actual[10].markdowns[-1])
+    assert ">YOU<br>TUBE</div>" in str(actual[9].markdowns[-1])
+    assert ">GOOGLE<br>TRENDS</div>" in str(actual[10].markdowns[-1])
+    assert "trend-source-header" in str(actual[11].markdowns[-1])
 
 
-def test_master_detail_columns_keep_original_side_by_side_layout() -> None:
+def test_master_detail_columns_give_candidate_list_slightly_more_width() -> None:
     fake = _FakeStreamlit()
     proxy = _ExistingProxy(fake)
 
     layout = runtime._patched_columns(proxy, [1.55, 1.75], gap="medium")
 
     assert len(layout) == 2
-    assert fake.column_calls == [[1.55, 1.75]]
+    assert fake.column_calls == [[1.70, 1.60]]
     assert len(fake.column_batches[0]) == 2
     assert fake.markdowns == []
 
@@ -213,7 +230,7 @@ def test_installer_patches_existing_candidate_proxy_once_without_rendering_early
         assert Proxy.columns is runtime._patched_columns
         assert getattr(Proxy, "_trend_candidate_table_runtime") is True
         assert recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS.count(
-            "minmax(210px, 1fr)"
+            "minmax(252px, 1fr)"
         ) == 1
         assert "trend_candidate_detail_drawer" not in (
             recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS
