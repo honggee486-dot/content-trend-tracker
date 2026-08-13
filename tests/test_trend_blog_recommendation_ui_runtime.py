@@ -73,6 +73,7 @@ def test_candidate_css_keeps_requested_readable_font_sizes_without_drawer() -> N
     assert "font-size: 0.76rem" in css
     assert "font-size: 0.81rem" in css
     assert "font-size: 0.84rem" in css
+    assert "font-size: 0.94rem" in css
     assert "trend_candidate_detail_drawer" not in css
     assert "position: fixed" not in css
     assert "translateX" not in css
@@ -82,11 +83,13 @@ def test_candidate_css_uses_equal_source_columns_and_wider_title() -> None:
     css = runtime._CANDIDATE_LAYOUT_CSS
 
     assert (
-        "36px 52px 104px 54px 48px minmax(252px, 1fr) "
+        "36px 48px 108px 50px 48px minmax(270px, 1fr) "
         "48px 44px 44px 44px 44px 44px"
         in css
     )
-    assert "min-width: 814px" in css
+    assert "min-width: 828px" in css
+    assert "width: calc(100% + 0.5rem)" in css
+    assert "margin-right: -0.5rem" in css
 
 
 class _FakeBlock:
@@ -188,14 +191,14 @@ def test_patched_columns_expands_candidate_table_to_twelve_visual_columns() -> N
     assert "trend-source-header" in str(actual[11].markdowns[-1])
 
 
-def test_master_detail_columns_give_candidate_list_slightly_more_width() -> None:
+def test_master_detail_columns_give_candidate_list_more_width() -> None:
     fake = _FakeStreamlit()
     proxy = _ExistingProxy(fake)
 
     layout = runtime._patched_columns(proxy, [1.55, 1.75], gap="medium")
 
     assert len(layout) == 2
-    assert fake.column_calls == [[1.70, 1.60]]
+    assert fake.column_calls == [[1.80, 1.50]]
     assert len(fake.column_batches[0]) == 2
     assert fake.markdowns == []
 
@@ -230,7 +233,7 @@ def test_installer_patches_existing_candidate_proxy_once_without_rendering_early
         assert Proxy.columns is runtime._patched_columns
         assert getattr(Proxy, "_trend_candidate_table_runtime") is True
         assert recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS.count(
-            "minmax(252px, 1fr)"
+            "minmax(270px, 1fr)"
         ) == 1
         assert "trend_candidate_detail_drawer" not in (
             recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS
