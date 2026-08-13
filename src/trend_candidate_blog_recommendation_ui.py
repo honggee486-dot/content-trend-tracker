@@ -3,9 +3,11 @@ from __future__ import annotations
 import base64
 from functools import wraps
 import html
+import json
 import re
 from typing import Any
 
+from src.services.adsense_candidate_service import build_adsense_candidate_assessments
 from src.services.blog_channel_strategy_service import (
     list_managed_blog_channel_strategies,
 )
@@ -22,38 +24,61 @@ from src.services.trend_blog_recommendation_service import (
 
 _RECOMMENDATION_TOKEN_PREFIX = "blog-rec-"
 _RECOMMENDATION_TOKEN_RE = re.compile(r"blog-rec-([A-Za-z0-9_-]+)")
+_ADSENSE_TOKEN_PREFIX = "adsense-hint-"
+_ADSENSE_TOKEN_RE = re.compile(r"adsense-hint-([A-Za-z0-9_-]+)")
 _STATUS_RE = re.compile(r"status-(추천|검토|보류)")
 
 _CANDIDATE_BLOG_RECOMMENDATION_CSS = """
 <style>
 .st-key-trend_candidate_table_header [data-testid="stHorizontalBlock"],
 [class*="st-key-trend_candidate_row_"] [data-testid="stHorizontalBlock"] {
-    grid-template-columns: 38px 78px 48px minmax(180px, 1fr) 46px 44px 44px 50px 70px 52px !important;
-    min-width: 670px !important;
+    grid-template-columns: 38px 96px 48px minmax(180px, 1fr) 46px 44px 44px 50px 70px 52px !important;
+    min-width: 688px !important;
 }
 .trend-blog-recommendation-cell {
     flex-direction: column !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 0.06rem !important;
-    line-height: 1.08 !important;
+    gap: 0.04rem !important;
+    min-height: 3.05rem !important;
+    line-height: 1.05 !important;
 }
 .trend-blog-recommendation-cell .trend-blog-judgement {
     display: block;
     font-size: 0.68rem !important;
     font-weight: 750;
-    line-height: 1.05;
+    line-height: 1.03;
 }
 .trend-blog-recommendation-cell .trend-blog-label {
     display: block;
-    max-width: 72px;
+    max-width: 90px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.64rem !important;
+    font-size: 0.62rem !important;
     font-weight: 650;
-    line-height: 1.05;
+    line-height: 1.03;
     opacity: 0.82;
+}
+.trend-blog-recommendation-cell .trend-adsense-label {
+    display: block;
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.61rem !important;
+    font-weight: 720;
+    line-height: 1.03;
+    cursor: help;
+}
+.trend-blog-recommendation-cell .trend-adsense-label.adsense-fit {
+    opacity: 0.96;
+}
+.trend-blog-recommendation-cell .trend-adsense-label.adsense-review {
+    opacity: 0.78;
+}
+.trend-blog-recommendation-cell .trend-adsense-label.adsense-avoid {
+    opacity: 0.64;
 }
 </style>
 """
@@ -75,34 +100,78 @@ def decode_recommendation_label(value: object) -> str:
         return ""
 
 
+def encode_adsense_assessment(value: object) -> str:
+    if not isinstance(value, dict):
+        return ""
+    payload = json.dumps(
+        {
+            "label": str(value.get("label") or "").strip(),
+            "reason": str(value.get("reason") or "").strip(),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return encode_recommendation_label(payload)
+
+
+def decode_adsense_assessment(value: object) -> dict[str, str]:
+    payload = decode_recommendation_label(value)
+    if not payload:
+        return {}
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    label = str(parsed.get("label") or "").strip()
+    reason = str(parsed.get("reason") or "").strip()
+    if not label:
+        return {}
+    return {"label": label, "reason": reason}
+
+
 def decorate_rankings_with_blog_recommendations(con, rankings):
     if rankings is None or getattr(rankings, "empty", True):
         return rankings
     if "cluster_id" not in rankings.columns or "판정" not in rankings.columns:
         return rankings
 
-    labels = build_trend_blog_recommendation_labels(
-        con,
-        rankings.to_dict("records"),
-    )
-    if not labels:
+    rows = rankings.to_dict("records")
+    labels = build_trend_blog_recommendation_labels(con, rows)
+    adsense_assessments = build_adsense_candidate_assessments(con, rows)
+    if not labels and not adsense_assessments:
         return rankings
 
     decorated = rankings.copy()
-    decorated["판정"] = [
-        (
-            f"{str(status)} {_RECOMMENDATION_TOKEN_PREFIX}"
-            f"{encode_recommendation_label(labels.get(str(cluster_id), ''))}"
-            if labels.get(str(cluster_id))
-            else str(status)
-        )
-        for status, cluster_id in zip(
-            decorated["판정"].tolist(),
-            decorated["cluster_id"].tolist(),
-            strict=True,
-        )
-    ]
+    decorated_statuses: list[str] = []
+    for status, cluster_id in zip(
+        decorated["판정"].tolist(),
+        decorated["cluster_id"].tolist(),
+        strict=True,
+    ):
+        normalized_id = str(cluster_id)
+        parts = [str(status)]
+        blog_label = labels.get(normalized_id, "")
+        if blog_label:
+            parts.append(
+                f"{_RECOMMENDATION_TOKEN_PREFIX}{encode_recommendation_label(blog_label)}"
+            )
+        adsense_assessment = adsense_assessments.get(normalized_id, {})
+        adsense_token = encode_adsense_assessment(adsense_assessment)
+        if adsense_token:
+            parts.append(f"{_ADSENSE_TOKEN_PREFIX}{adsense_token}")
+        decorated_statuses.append(" ".join(parts))
+    decorated["판정"] = decorated_statuses
     return decorated
+
+
+def _adsense_css_class(label: str) -> str:
+    if label.endswith("적합"):
+        return "adsense-fit"
+    if label.endswith("피함"):
+        return "adsense-avoid"
+    return "adsense-review"
 
 
 def rewrite_candidate_markdown(value: object) -> object:
@@ -111,17 +180,30 @@ def rewrite_candidate_markdown(value: object) -> object:
     if 'candidate-tbl-hdr cell-center">판정</div>' in value:
         return value.replace(
             'candidate-tbl-hdr cell-center">판정</div>',
-            'candidate-tbl-hdr cell-center">추천·검토</div>',
+            (
+                'candidate-tbl-hdr cell-center" '
+                'title="A:적합=초기 심사 우선 후보 · A:검토=최신성·독창성 보강 후 사용 · '
+                'A:피함=초기 심사 전 보수적 회피 · 승인 보장은 아님">추천·AdSense</div>'
+            ),
         )
     if "candidate-tbl-cell cell-center status-tag" not in value:
         return value
 
-    token_match = _RECOMMENDATION_TOKEN_RE.search(value)
+    blog_match = _RECOMMENDATION_TOKEN_RE.search(value)
+    adsense_match = _ADSENSE_TOKEN_RE.search(value)
     status_match = _STATUS_RE.search(value)
-    if token_match is None or status_match is None:
+    if status_match is None or (blog_match is None and adsense_match is None):
         return value
-    label = decode_recommendation_label(token_match.group(1))
-    if not label:
+
+    blog_label = (
+        decode_recommendation_label(blog_match.group(1)) if blog_match is not None else ""
+    )
+    adsense_assessment = (
+        decode_adsense_assessment(adsense_match.group(1))
+        if adsense_match is not None
+        else {}
+    )
+    if not blog_label and not adsense_assessment:
         return value
 
     ai_class = ""
@@ -130,12 +212,28 @@ def rewrite_candidate_markdown(value: object) -> object:
     elif "ai-pending" in value:
         ai_class = " ai-pending"
     status = html.escape(status_match.group(1))
-    safe_label = html.escape(label)
+    blog_html = ""
+    if blog_label:
+        safe_label = html.escape(blog_label)
+        blog_html = (
+            f'<span class="trend-blog-label" title="{safe_label}">{safe_label}</span>'
+        )
+    adsense_html = ""
+    if adsense_assessment:
+        adsense_label = str(adsense_assessment.get("label") or "").strip()
+        adsense_reason = str(adsense_assessment.get("reason") or "").strip()
+        safe_adsense_label = html.escape(adsense_label)
+        safe_adsense_reason = html.escape(adsense_reason, quote=True)
+        css_class = _adsense_css_class(adsense_label)
+        adsense_html = (
+            f'<span class="trend-adsense-label {css_class}" '
+            f'title="{safe_adsense_reason}">{safe_adsense_label}</span>'
+        )
     return (
         f'<div class="candidate-tbl-cell cell-center status-tag{ai_class} '
         'trend-blog-recommendation-cell">'
         f'<span class="trend-blog-judgement">{status}</span>'
-        f'<span class="trend-blog-label" title="{safe_label}">{safe_label}</span>'
+        f"{blog_html}{adsense_html}"
         '</div>'
     )
 
