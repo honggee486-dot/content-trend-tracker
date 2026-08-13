@@ -79,17 +79,19 @@ def test_candidate_css_keeps_requested_readable_font_sizes_without_drawer() -> N
     assert "translateX" not in css
 
 
-def test_candidate_css_uses_equal_source_columns_and_wider_title() -> None:
+def test_candidate_css_fits_equal_source_columns_inside_list_panel() -> None:
     css = runtime._CANDIDATE_LAYOUT_CSS
 
     assert (
         "36px 48px 108px 50px 48px minmax(270px, 1fr) "
-        "48px 44px 44px 44px 44px 44px"
+        "48px 42px 42px 42px 42px 42px"
         in css
     )
-    assert "min-width: 828px" in css
-    assert "width: calc(100% + 0.5rem)" in css
-    assert "margin-right: -0.5rem" in css
+    assert "min-width: 818px" in css
+    assert "width: 100%" in css
+    assert "max-width: 100%" in css
+    assert "width: calc(100% + 0.5rem)" not in css
+    assert "margin-right: -0.5rem" not in css
 
 
 class _FakeBlock:
@@ -116,6 +118,7 @@ class _FakeStreamlit:
         self.session_state: dict[str, object] = {}
         self.column_calls: list[object] = []
         self.column_batches: list[list[_FakeBlock]] = []
+        self.container_calls: list[dict[str, object]] = []
         self.markdowns: list[str] = []
         self.rerun_count = 0
 
@@ -125,6 +128,10 @@ class _FakeStreamlit:
         batch = [_FakeBlock() for _ in range(count)]
         self.column_batches.append(batch)
         return batch
+
+    def container(self, *args, **kwargs):
+        self.container_calls.append(dict(kwargs))
+        return _FakeBlock()
 
     def markdown(self, body, *args, **kwargs):
         self.markdowns.append(str(body))
@@ -198,9 +205,43 @@ def test_master_detail_columns_give_candidate_list_more_width() -> None:
     layout = runtime._patched_columns(proxy, [1.55, 1.75], gap="medium")
 
     assert len(layout) == 2
-    assert fake.column_calls == [[1.80, 1.50]]
+    assert fake.column_calls == [[1.90, 1.40]]
     assert len(fake.column_batches[0]) == 2
     assert fake.markdowns == []
+
+
+def test_candidate_list_container_is_tall_enough_for_thirteen_rows() -> None:
+    fake = _FakeStreamlit()
+    proxy = _ExistingProxy(fake)
+
+    block = runtime._patched_container(
+        proxy,
+        key="trend_candidate_list",
+        height=620,
+        border=True,
+        gap=None,
+    )
+
+    assert isinstance(block, _FakeBlock)
+    assert fake.container_calls == [
+        {
+            "key": "trend_candidate_list",
+            "height": 760,
+            "border": True,
+            "gap": None,
+        }
+    ]
+
+
+def test_other_containers_keep_their_original_height() -> None:
+    fake = _FakeStreamlit()
+    proxy = _ExistingProxy(fake)
+
+    runtime._patched_container(proxy, key="other", height=620, border=True)
+
+    assert fake.container_calls == [
+        {"key": "other", "height": 620, "border": True}
+    ]
 
 
 def test_clicking_title_does_not_create_drawer_state_or_extra_rerun() -> None:
@@ -231,6 +272,7 @@ def test_installer_patches_existing_candidate_proxy_once_without_rendering_early
         runtime.install_trend_blog_recommendation_ui_runtime(st_module=fake)
 
         assert Proxy.columns is runtime._patched_columns
+        assert Proxy.container is runtime._patched_container
         assert getattr(Proxy, "_trend_candidate_table_runtime") is True
         assert recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS.count(
             "minmax(270px, 1fr)"
