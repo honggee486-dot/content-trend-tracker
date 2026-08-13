@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,7 +11,9 @@ from scripts.agent_test_harness import (
     SCENARIO_ORDER,
     SCENARIO_TESTS,
     build_pytest_command,
+    main,
     normalize_scenarios,
+    resolve_routing,
     run_harness,
 )
 
@@ -92,6 +95,12 @@ def test_requested_operating_scenarios_have_dedicated_safe_test_sets() -> None:
         in SCENARIO_TESTS["workflow"]
     )
     assert "tests/test_workflow_navigation_state.py" in SCENARIO_TESTS["workflow"]
+    assert "tests/test_adsense_candidate_service.py" in SCENARIO_TESTS["workflow"]
+    assert "tests/test_trend_blog_recommendation_service.py" in SCENARIO_TESTS["workflow"]
+    assert (
+        "tests/test_trend_candidate_blog_recommendation_ui.py"
+        in SCENARIO_TESTS["workflow"]
+    )
     assert "tests/test_agent_harness_launcher_contract.py" in SCENARIO_TESTS["harness"]
     assert "tests/test_apply_update_work_branch_mode.py" in SCENARIO_TESTS["harness"]
 
@@ -140,17 +149,6 @@ def test_pytest_command_uses_isolated_basetemp_and_no_cache(tmp_path: Path) -> N
     assert command[-len(scheduler_tests):] == scheduler_tests
 
 
-from scripts.agent_test_harness import (
-    PROJECT_ROOT,
-    SCENARIO_ORDER,
-    SCENARIO_TESTS,
-    build_pytest_command,
-    normalize_scenarios,
-    resolve_routing,
-    run_harness,
-)
-
-
 def test_resolve_routing_returns_doc_only_for_markdown_and_docs() -> None:
     decision = resolve_routing(["docs/AGENT_TEST_HARNESS.md", "README.md"])
     assert decision.mode == "doc_only"
@@ -165,16 +163,48 @@ def test_resolve_routing_returns_selective_for_single_domain() -> None:
     assert "tests/test_operation_diagnostic_cli.py" in decision.test_files
 
 
+def test_resolve_routing_keeps_adsense_blog_delta_in_workflow() -> None:
+    decision = resolve_routing(
+        [
+            "src/services/adsense_candidate_service.py",
+            "src/trend_candidate_blog_recommendation_ui.py",
+            "tests/test_adsense_candidate_service.py",
+            "tests/test_trend_candidate_blog_recommendation_ui.py",
+        ]
+    )
+
+    assert decision.mode == "selective"
+    assert decision.scenarios == ("workflow",)
+    assert "tests/test_adsense_candidate_service.py" in decision.test_files
+    assert "tests/test_trend_candidate_blog_recommendation_ui.py" in decision.test_files
+
+
+def test_resolve_targets_cli_emits_ascii_safe_json(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(
+        ["--resolve-targets", "src/services/adsense_candidate_service.py"]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    output.encode("ascii")
+    payload = json.loads(output)
+    assert payload["mode"] == "selective"
+    assert payload["scenarios"] == ["workflow"]
+    assert "변경 범위" in payload["reason"]
+
+
 def test_resolve_routing_returns_fallback_all_for_core_files_and_multi_domain() -> None:
     db_decision = resolve_routing(["src/database.py"])
     assert db_decision.mode == "fallback_all"
     assert "src/database.py" in db_decision.reason or "DB" in db_decision.reason
 
-    multi_decision = resolve_routing([
-        "src/services/trend_cluster_ai_review_service.py",
-        "src/services/scheduler_service.py",
-        "src/services/program_log_service.py",
-    ])
+    multi_decision = resolve_routing(
+        [
+            "src/services/trend_cluster_ai_review_service.py",
+            "src/services/scheduler_service.py",
+            "src/services/program_log_service.py",
+        ]
+    )
     assert multi_decision.mode == "fallback_all"
 
 
