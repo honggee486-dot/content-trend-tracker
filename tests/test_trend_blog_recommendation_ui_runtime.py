@@ -214,20 +214,26 @@ def test_master_detail_columns_become_full_width_list_and_right_drawer() -> None
     assert any("translateX(calc(100% + 1.35rem))" in item for item in fake.markdowns)
 
 
-def test_installer_patches_existing_candidate_proxy_once(monkeypatch) -> None:
+def test_installer_patches_existing_candidate_proxy_once_without_rendering_early() -> None:
     class Proxy:
         pass
 
-    monkeypatch.setattr(recommendation_ui, "_CandidateStreamlitProxy", Proxy)
-    monkeypatch.setattr(recommendation_ui, "_CANDIDATE_BLOG_RECOMMENDATION_CSS", "base")
+    original_proxy = recommendation_ui._CandidateStreamlitProxy
+    original_css = recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS
     fake = _FakeStreamlit()
+    try:
+        recommendation_ui._CandidateStreamlitProxy = Proxy
+        recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS = "base"
 
-    runtime.install_trend_blog_recommendation_ui_runtime(st_module=fake)
-    runtime.install_trend_blog_recommendation_ui_runtime(st_module=fake)
+        runtime.install_trend_blog_recommendation_ui_runtime(st_module=fake)
+        runtime.install_trend_blog_recommendation_ui_runtime(st_module=fake)
 
-    assert Proxy.columns is runtime._patched_columns
-    assert getattr(Proxy, "_trend_candidate_drawer_runtime") is True
-    assert recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS.count(
-        "trend_candidate_detail_drawer"
-    ) >= 1
-    assert len(fake.markdowns) == 1
+        assert Proxy.columns is runtime._patched_columns
+        assert getattr(Proxy, "_trend_candidate_drawer_runtime") is True
+        assert recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS.count(
+            "trend_candidate_detail_drawer"
+        ) >= 1
+        assert fake.markdowns == []
+    finally:
+        recommendation_ui._CandidateStreamlitProxy = original_proxy
+        recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS = original_css
