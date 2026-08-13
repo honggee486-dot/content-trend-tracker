@@ -140,6 +140,44 @@ def test_pytest_command_uses_isolated_basetemp_and_no_cache(tmp_path: Path) -> N
     assert command[-len(scheduler_tests):] == scheduler_tests
 
 
+from scripts.agent_test_harness import (
+    PROJECT_ROOT,
+    SCENARIO_ORDER,
+    SCENARIO_TESTS,
+    build_pytest_command,
+    normalize_scenarios,
+    resolve_routing,
+    run_harness,
+)
+
+
+def test_resolve_routing_returns_doc_only_for_markdown_and_docs() -> None:
+    decision = resolve_routing(["docs/AGENT_TEST_HARNESS.md", "README.md"])
+    assert decision.mode == "doc_only"
+    assert decision.scenarios == ()
+    assert "tests/test_repository_text_hygiene.py" in decision.test_files
+
+
+def test_resolve_routing_returns_selective_for_single_domain() -> None:
+    decision = resolve_routing(["scripts/report_operation_diagnostics.py"])
+    assert decision.mode == "selective"
+    assert decision.scenarios == ("diagnostics",)
+    assert "tests/test_operation_diagnostic_cli.py" in decision.test_files
+
+
+def test_resolve_routing_returns_fallback_all_for_core_files_and_multi_domain() -> None:
+    db_decision = resolve_routing(["src/database.py"])
+    assert db_decision.mode == "fallback_all"
+    assert "src/database.py" in db_decision.reason or "DB" in db_decision.reason
+
+    multi_decision = resolve_routing([
+        "src/services/trend_cluster_ai_review_service.py",
+        "src/services/scheduler_service.py",
+        "src/services/program_log_service.py",
+    ])
+    assert multi_decision.mode == "fallback_all"
+
+
 def test_harness_runs_scenarios_sequentially_with_safe_environment() -> None:
     calls: list[dict] = []
 

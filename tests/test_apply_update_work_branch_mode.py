@@ -68,15 +68,16 @@ def test_work_engine_preserves_safe_order_and_main_immutability() -> None:
     status_index = source.index("'status', '--porcelain=v1', '--untracked-files=all'")
     fetch_index = source.index("'fetch', '--no-tags', '--prune', 'origin'")
     switch_index = source.index("'switch', '--track', '-c', $BranchName")
+    resolve_index = source.index("'--resolve-targets'")
     compile_index = source.index(
         "'-m', 'compileall', '-q', 'app.py', 'src', 'tests', 'scripts'"
     )
-    pytest_index = source.index("'-m', 'pytest', '-q', '-p', 'no:cacheprovider'")
+    pytest_index = source.index("'-m', 'pytest', '-n', '6', '--dist', 'loadfile'")
     final_index = source.index(
         'Write-Step "5/5 기본 브랜치 무변경과 최종 상태 확인"'
     )
 
-    assert status_index < fetch_index < switch_index < compile_index
+    assert status_index < fetch_index < switch_index < resolve_index < compile_index
     assert compile_index < pytest_index < final_index
     assert '$WorkBranchPrefix = "work/"' in source
     assert "'show-ref', '--verify', '--quiet'" in source
@@ -111,6 +112,21 @@ def test_work_engine_does_not_run_destructive_or_publish_git_commands() -> None:
     assert "'checkout', '-f'" not in source
     assert "git add" not in source
     assert "git commit" not in source
+
+
+def test_work_engine_incremental_delta_and_safety_contracts() -> None:
+    source = _read("scripts/apply_update_work.ps1")
+
+    assert "$beforeHead =" in source
+    assert "$targetHead =" in source
+    assert "Is-Ancestor $beforeHead $targetHead" in source
+    assert "적용 전 로컬 커밋($beforeHead)이 대상 커밋($targetHead)의 조상이 아닙니다." in source
+    assert "'--diff-filter=ACDMRT'" in source
+    assert '"$beforeHead..$targetHead"' in source
+    assert "$isNoOp = ($beforeHead -eq $targetHead)" in source
+    assert "$mode = 'no_op'" in source
+    assert "$deltaFailed = $true" in source
+    assert "변경 파일 계산 실패로 인해 전체 pytest로 fallback합니다." in source
 
 
 def test_work_engine_is_utf8_with_bom() -> None:

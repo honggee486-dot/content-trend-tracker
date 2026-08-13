@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 
+from scripts.report_blogger_preflight import main
 from src.services.blogger_draft_service import BLOGGER_SCOPE
 
 
@@ -45,62 +46,57 @@ def _write_token(path: Path) -> None:
     )
 
 
-def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            sys.executable,
-            "-X",
-            "utf8",
-            str(PROJECT_ROOT / "scripts" / "report_blogger_preflight.py"),
-            *args,
-        ],
-        cwd=PROJECT_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-
-
-def test_json_cli_reports_ready_without_secret_values(tmp_path: Path) -> None:
+def test_json_cli_reports_ready_without_secret_values(
+    tmp_path: Path,
+    capsys,
+) -> None:
     client_path = tmp_path / "client.json"
     token_path = tmp_path / "token.json"
     _write_client(client_path)
     _write_token(token_path)
 
-    completed = _run_cli(
-        "--client",
-        str(client_path),
-        "--token",
-        str(token_path),
-        "--json",
+    exit_code = main(
+        [
+            "--client",
+            str(client_path),
+            "--token",
+            str(token_path),
+            "--json",
+        ]
     )
+    captured = capsys.readouterr()
 
-    assert completed.returncode == 0, completed.stderr
-    report = json.loads(completed.stdout)
+    assert exit_code == 0, captured.err
+    report = json.loads(captured.out)
     assert report["ready_for_authorization"] is True
     assert report["ready_for_api"] is True
-    assert "cli-client-secret-value" not in completed.stdout
-    assert "cli-client-secret-key" not in completed.stdout
-    assert "cli-access-secret-value" not in completed.stdout
-    assert "cli-refresh-secret-value" not in completed.stdout
+    assert "cli-client-secret-value" not in captured.out
+    assert "cli-client-secret-key" not in captured.out
+    assert "cli-access-secret-value" not in captured.out
+    assert "cli-refresh-secret-value" not in captured.out
 
 
-def test_cli_uses_exit_code_three_when_account_connection_is_needed(tmp_path: Path) -> None:
+def test_cli_uses_exit_code_three_when_account_connection_is_needed(
+    tmp_path: Path,
+    capsys,
+) -> None:
     client_path = tmp_path / "client.json"
     _write_client(client_path)
 
-    completed = _run_cli(
-        "--client",
-        str(client_path),
-        "--token",
-        str(tmp_path / "missing-token.json"),
+    exit_code = main(
+        [
+            "--client",
+            str(client_path),
+            "--token",
+            str(tmp_path / "missing-token.json"),
+        ]
     )
+    captured = capsys.readouterr()
 
-    assert completed.returncode == 3
-    assert "계정 연결" in completed.stdout
-    assert "네트워크 요청: 없음" in completed.stdout
-    assert "DuckDB 쓰기: 없음" in completed.stdout
+    assert exit_code == 3
+    assert "계정 연결" in captured.out
+    assert "네트워크 요청: 없음" in captured.out
+    assert "DuckDB 쓰기: 없음" in captured.out
 
 
 def test_blogger_preflight_batch_preserves_windows_contract() -> None:

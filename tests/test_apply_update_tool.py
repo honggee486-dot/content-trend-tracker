@@ -73,12 +73,18 @@ def _prepare_release_launcher_repo(tmp_path: Path, *, engine_exit_code: int) -> 
         encoding="utf-8-sig",
     )
 
-    _git(repo, "init")
-    _git(repo, "config", "user.name", "Apply Update Test")
-    _git(repo, "config", "user.email", "apply-update@example.invalid")
+    _git(repo, "init", "-b", "main")
     _git(repo, "add", "scripts")
-    _git(repo, "commit", "-m", "test fixture")
-    _git(repo, "branch", "-M", "main")
+    _git(
+        repo,
+        "-c",
+        "user.name=Apply Update Test",
+        "-c",
+        "user.email=apply-update@example.invalid",
+        "commit",
+        "-m",
+        "test fixture",
+    )
     _git(repo, "switch", "-c", "work/0.10.106")
     return repo
 

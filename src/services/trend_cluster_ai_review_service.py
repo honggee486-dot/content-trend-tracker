@@ -120,26 +120,46 @@ def _request_text(batch_id: str, candidates: list[dict[str, Any]]) -> str:
         "representative_title은 입력 제목에 있는 사실만 사용해 자연스러운 한국어 제목으로 작성하고, "
         "입력에 없는 날짜·수치·제품명·인물·결과를 만들지 마세요. 설명 없이 지정된 JSON만 반환하세요."
     )
+def _candidate_payload(candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "candidate_id": str(candidate.get("candidate_id") or ""),
+        "title": str(candidate.get("title") or ""),
+        "examples": list(candidate.get("examples") or ())[:3],
+        "item_count": int(candidate.get("item_count") or 0),
+        "source_types": list(candidate.get("source_types") or ())[:7],
+        "publishers": list(candidate.get("publishers") or ())[:5],
+        "first_seen_at": str(candidate.get("first_seen_at") or ""),
+        "last_seen_at": str(candidate.get("last_seen_at") or ""),
+        "first_stage_rule_ids": list(
+            candidate.get("first_stage_rule_ids") or ("undetermined",)
+        ),
+        "safety_profile": dict(candidate.get("safety_profile") or {}),
+        "existing_options": build_existing_option_payload(candidate),
+    }
+
+
+def _request_text(batch_id: str, candidates: list[dict[str, Any]]) -> str:
+    instructions = (
+        "아래 1차 군집 후보를 같은 구체적 사건 또는 같은 정보성 주제로 2차 분류하세요. "
+        "1차 단계는 must_merge·must_split 규칙으로 확실한 병합과 분리를 먼저 적용했습니다. "
+        "각 candidate_id는 assignments에 정확히 한 번만 반환하세요. "
+        "candidate마다 existing_options가 있고, 같은 사건이면 decision을 existing으로 한 뒤 "
+        "그 candidate 안의 option_id만 existing_option_id로 선택하세요. "
+        "existing_options가 없거나 맞는 선택지가 없으면 existing을 선택하지 마세요. "
+        "option_id는 candidate마다 1부터 다시 시작하므로 다른 candidate의 번호를 근거로 사용하지 마세요. "
+        "기존 군집끼리 서로 병합하지 말고 새 후보만 기존 군집에 연결하세요. "
+        "같은 배치의 새 후보끼리 같은 사건이면 decision을 new로 하고 동일한 new_group_id를 사용하세요. "
+        "first_stage_rule_ids와 safety_profile의 날짜·회차·제품·행동·방향이 충돌하면 합치지 마세요. "
+        "같은 기업이라는 이유만으로 제품 출시·공장 투자·공장 증축·주가 상승·주가 하락·목표주가 전망을 합치지 마세요. "
+        "같은 로또 회차·같은 경기·같은 정책 시행처럼 행동·대상·시점이 같은 표현 차이는 묶을 수 있습니다. "
+        "판단 근거가 부족하거나 기존 후보와 새 그룹 중 확신하기 어렵다면 uncertain으로 반환하세요. "
+        "decision이 existing이 아니면 existing_option_id는 반드시 0으로 반환하세요. "
+        "representative_title은 입력 제목에 있는 사실만 사용해 자연스러운 한국어 제목으로 작성하고, "
+        "입력에 없는 날짜·수치·제품명·인물·결과를 만들지 마세요. 설명 없이 지정된 JSON만 반환하세요."
+    )
     payload = {
         "batch_id": batch_id,
-        "candidates": [
-            {
-                "candidate_id": str(candidate.get("candidate_id") or ""),
-                "title": str(candidate.get("title") or ""),
-                "examples": list(candidate.get("examples") or ())[:3],
-                "item_count": int(candidate.get("item_count") or 0),
-                "source_types": list(candidate.get("source_types") or ())[:7],
-                "publishers": list(candidate.get("publishers") or ())[:5],
-                "first_seen_at": str(candidate.get("first_seen_at") or ""),
-                "last_seen_at": str(candidate.get("last_seen_at") or ""),
-                "first_stage_rule_ids": list(
-                    candidate.get("first_stage_rule_ids") or ("undetermined",)
-                ),
-                "safety_profile": dict(candidate.get("safety_profile") or {}),
-                "existing_options": build_existing_option_payload(candidate),
-            }
-            for candidate in candidates
-        ],
+        "candidates": [_candidate_payload(candidate) for candidate in candidates],
     }
     return instructions + "\n\n" + json.dumps(
         payload,
@@ -188,12 +208,25 @@ def select_cluster_batch_candidates(
     if not normalized:
         return []
     character_limit = max(20_000, min(int(max_request_characters), 500_000))
+    base_text_len = len(_request_text(batch_id, []))
     selected: list[dict[str, Any]] = []
+    current_json_len = 0
     for candidate in normalized:
-        trial = selected + [candidate]
-        if selected and len(_request_text(batch_id, trial)) > character_limit:
+        item_len = len(
+            json.dumps(
+                _candidate_payload(candidate),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        )
+        trial_count = len(selected) + 1
+        trial_len = (
+            base_text_len - 1 + current_json_len + item_len + (trial_count - 1) + 1
+        )
+        if selected and trial_len > character_limit:
             break
-        selected = trial
+        selected.append(candidate)
+        current_json_len += item_len
     return selected
 
 

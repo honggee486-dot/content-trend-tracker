@@ -577,7 +577,10 @@ def _print_human(report: dict) -> None:
     print(f"- {action['reason']}")
 
 
-def main() -> int:
+from typing import Sequence
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="실제 DuckDB를 수정하지 않고 P2 운영 지표를 출력합니다."
     )
@@ -605,7 +608,7 @@ def main() -> int:
         action="store_true",
         help="사람용 요약 대신 JSON을 출력",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     db_path = args.db.expanduser().resolve()
     if not db_path.exists():

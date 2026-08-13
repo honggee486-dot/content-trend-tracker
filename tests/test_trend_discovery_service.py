@@ -1101,6 +1101,7 @@ def test_ranking_performance_stays_bounded_on_large_synthetic_fixture(tmp_path: 
     db_path = tmp_path / "large-ranking.duckdb"
     init_database(db_path)
     with connect_database(db_path) as con:
+        con.begin()
         for index in range(1000):
             title = f"테스트제품 모델-X-{index:04d} 기능 변경"
             upsert_source_signal(
@@ -1115,6 +1116,7 @@ def test_ranking_performance_stays_bounded_on_large_synthetic_fixture(tmp_path: 
                 ),
                 create_topic=False,
             )
+        con.commit()
 
         started = perf_counter()
         result = rebuild_trend_rankings(con, lookback_hours=72)

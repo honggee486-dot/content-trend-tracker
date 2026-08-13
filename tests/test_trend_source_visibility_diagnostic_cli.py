@@ -6,36 +6,26 @@ import subprocess
 import sys
 
 from scripts.report_operation_diagnostics import _capture_database_state
+from scripts.report_trend_source_visibility import main
 from src.database import connect_database, init_database, set_setting
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_trend_source_visibility_json_cli_is_read_only(tmp_path: Path) -> None:
+def test_trend_source_visibility_json_cli_is_read_only(
+    tmp_path: Path,
+    capsys,
+) -> None:
     db_path = tmp_path / "visibility-cli.duckdb"
     init_database(db_path)
     before = _capture_database_state(db_path)
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-X",
-            "utf8",
-            str(PROJECT_ROOT / "scripts" / "report_trend_source_visibility.py"),
-            "--db",
-            str(db_path),
-            "--json",
-        ],
-        cwd=PROJECT_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    exit_code = main(["--db", str(db_path), "--json"])
+    captured = capsys.readouterr()
 
-    assert completed.returncode == 0, completed.stderr
-    report = json.loads(completed.stdout)
+    assert exit_code == 0, captured.err
+    report = json.loads(captured.out)
     assert report["read_only"] is True
     assert report["available"] is True
     assert report["lookback_hours"] == 72
@@ -57,6 +47,7 @@ def test_trend_source_visibility_json_cli_is_read_only(tmp_path: Path) -> None:
 
 def test_trend_source_visibility_cli_uses_configured_lookback_by_default(
     tmp_path: Path,
+    capsys,
 ) -> None:
     db_path = tmp_path / "visibility-configured-lookback.duckdb"
     init_database(db_path)
@@ -64,79 +55,54 @@ def test_trend_source_visibility_cli_uses_configured_lookback_by_default(
         set_setting(con, "trend_lookback_hours", "168")
     before = _capture_database_state(db_path)
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-X",
-            "utf8",
-            str(PROJECT_ROOT / "scripts" / "report_trend_source_visibility.py"),
-            "--db",
-            str(db_path),
-            "--json",
-        ],
-        cwd=PROJECT_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    exit_code = main(["--db", str(db_path), "--json"])
+    captured = capsys.readouterr()
 
-    assert completed.returncode == 0, completed.stderr
-    report = json.loads(completed.stdout)
+    assert exit_code == 0, captured.err
+    report = json.loads(captured.out)
     assert report["lookback_hours"] == 168
     assert report["read_only_verification"]["verified"] is True
     assert _capture_database_state(db_path) == before
 
 
-def test_trend_source_visibility_human_cli_shows_exposure_chain(tmp_path: Path) -> None:
+def test_trend_source_visibility_human_cli_shows_exposure_chain(
+    tmp_path: Path,
+    capsys,
+) -> None:
     db_path = tmp_path / "visibility-human.duckdb"
     init_database(db_path)
     before = _capture_database_state(db_path)
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-X",
-            "utf8",
-            str(PROJECT_ROOT / "scripts" / "report_trend_source_visibility.py"),
-            "--db",
-            str(db_path),
-        ],
-        cwd=PROJECT_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    exit_code = main(["--db", str(db_path)])
+    captured = capsys.readouterr()
 
-    assert completed.returncode == 0, completed.stderr
-    assert "트렌드 출처별 글감 노출 읽기 전용 진단" in completed.stdout
-    assert "글감 추천순 · 최대 100개" in completed.stdout
-    assert "현재 전체 군집/필터 통과/실제 기본 목록 표시" in completed.stdout
-    assert "[YouTube]" in completed.stdout
-    assert "[NAVER]" in completed.stdout
-    assert "[Daum]" in completed.stdout
-    assert "[Google Trends]" in completed.stdout
-    assert "[위키백과]" in completed.stdout
-    assert "실제 목록 표시/표시 한도 밖/추천·검토 점수 미달" in completed.stdout
-    assert "최고 글감기회/트렌드 점수" in completed.stdout
-    assert "해석 순서:" in completed.stdout
+    assert exit_code == 0, captured.err
+    assert "트렌드 출처별 글감 노출 읽기 전용 진단" in captured.out
+    assert "글감 추천순 · 최대 100개" in captured.out
+    assert "현재 전체 군집/필터 통과/실제 기본 목록 표시" in captured.out
+    assert "[YouTube]" in captured.out
+    assert "[NAVER]" in captured.out
+    assert "[Daum]" in captured.out
+    assert "[Google Trends]" in captured.out
+    assert "[위키백과]" in captured.out
+    assert "실제 목록 표시/표시 한도 밖/추천·검토 점수 미달" in captured.out
+    assert "최고 글감기회/트렌드 점수" in captured.out
+    assert "해석 순서:" in captured.out
     assert _capture_database_state(db_path) == before
 
 
-def test_trend_source_visibility_cli_accepts_actual_list_scope_options(tmp_path: Path) -> None:
+def test_trend_source_visibility_cli_accepts_actual_list_scope_options(
+    tmp_path: Path,
+    capsys,
+) -> None:
     db_path = tmp_path / "visibility-options.duckdb"
     init_database(db_path)
     with connect_database(db_path) as con:
         set_setting(con, "trend_lookback_hours", "168")
     before = _capture_database_state(db_path)
 
-    completed = subprocess.run(
+    exit_code = main(
         [
-            sys.executable,
-            "-X",
-            "utf8",
-            str(PROJECT_ROOT / "scripts" / "report_trend_source_visibility.py"),
             "--db",
             str(db_path),
             "--lookback-hours",
@@ -146,16 +112,12 @@ def test_trend_source_visibility_cli_accepts_actual_list_scope_options(tmp_path:
             "--sort-by",
             "recent",
             "--json",
-        ],
-        cwd=PROJECT_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
+        ]
     )
+    captured = capsys.readouterr()
 
-    assert completed.returncode == 0, completed.stderr
-    report = json.loads(completed.stdout)
+    assert exit_code == 0, captured.err
+    report = json.loads(captured.out)
     assert report["lookback_hours"] == 24
     assert report["display_limit"] == 25
     assert report["sort_by"] == "recent"
