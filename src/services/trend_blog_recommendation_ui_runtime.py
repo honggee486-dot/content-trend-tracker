@@ -7,17 +7,18 @@ import src.trend_candidate_blog_recommendation_ui as recommendation_ui
 
 
 _MASTER_DETAIL_SOURCE_SPEC = (1.55, 1.75)
-_MASTER_DETAIL_WIDE_LIST_SPEC = [1.80, 1.50]
+_MASTER_DETAIL_WIDE_LIST_SPEC = [1.90, 1.40]
+_CANDIDATE_LIST_HEIGHT = 760
 
 _CANDIDATE_LAYOUT_CSS = """
 <style>
 .st-key-trend_candidate_table_header [data-testid="stHorizontalBlock"],
 [class*="st-key-trend_candidate_row_"] [data-testid="stHorizontalBlock"] {
-    grid-template-columns: 36px 48px 108px 50px 48px minmax(270px, 1fr) 48px 44px 44px 44px 44px 44px !important;
-    min-width: 828px !important;
-    width: calc(100% + 0.5rem) !important;
-    max-width: calc(100% + 0.5rem) !important;
-    margin-right: -0.5rem !important;
+    grid-template-columns: 36px 48px 108px 50px 48px minmax(270px, 1fr) 48px 42px 42px 42px 42px 42px !important;
+    min-width: 818px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 .candidate-tbl-hdr {
     font-size: 0.76rem !important;
@@ -300,6 +301,13 @@ def _patched_columns(self, *args, **kwargs):
     return [recommendation_ui._CandidateColumnProxy(column) for column in columns]
 
 
+def _patched_container(self, *args, **kwargs):
+    adjusted_kwargs = dict(kwargs)
+    if str(adjusted_kwargs.get("key") or "") == "trend_candidate_list":
+        adjusted_kwargs["height"] = _CANDIDATE_LIST_HEIGHT
+    return self._target.container(*args, **adjusted_kwargs)
+
+
 def install_trend_blog_recommendation_ui_runtime(*, st_module: Any) -> None:
     """Keep side-by-side details while giving the candidate list more readable width."""
     del st_module
@@ -308,5 +316,6 @@ def install_trend_blog_recommendation_ui_runtime(*, st_module: Any) -> None:
         return
 
     proxy_cls.columns = _patched_columns
+    proxy_cls.container = _patched_container
     proxy_cls._trend_candidate_table_runtime = True
     recommendation_ui._CANDIDATE_BLOG_RECOMMENDATION_CSS += _CANDIDATE_LAYOUT_CSS
