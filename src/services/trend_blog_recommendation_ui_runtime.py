@@ -7,14 +7,17 @@ import src.trend_candidate_blog_recommendation_ui as recommendation_ui
 
 
 _MASTER_DETAIL_SOURCE_SPEC = (1.55, 1.75)
-_MASTER_DETAIL_WIDE_LIST_SPEC = [1.70, 1.60]
+_MASTER_DETAIL_WIDE_LIST_SPEC = [1.80, 1.50]
 
 _CANDIDATE_LAYOUT_CSS = """
 <style>
 .st-key-trend_candidate_table_header [data-testid="stHorizontalBlock"],
 [class*="st-key-trend_candidate_row_"] [data-testid="stHorizontalBlock"] {
-    grid-template-columns: 36px 52px 104px 54px 48px minmax(252px, 1fr) 48px 44px 44px 44px 44px 44px !important;
-    min-width: 814px !important;
+    grid-template-columns: 36px 48px 108px 50px 48px minmax(270px, 1fr) 48px 44px 44px 44px 44px 44px !important;
+    min-width: 828px !important;
+    width: calc(100% + 0.5rem) !important;
+    max-width: calc(100% + 0.5rem) !important;
+    margin-right: -0.5rem !important;
 }
 .candidate-tbl-hdr {
     font-size: 0.76rem !important;
@@ -52,8 +55,9 @@ _CANDIDATE_LAYOUT_CSS = """
     opacity: 0.88;
 }
 .trend-adsense-column {
-    font-size: 0.84rem !important;
-    font-weight: 780 !important;
+    font-size: 0.94rem !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
     cursor: help;
 }
 .trend-blog-empty,
