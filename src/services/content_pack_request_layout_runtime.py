@@ -6,6 +6,9 @@ from collections.abc import Callable
 
 
 _CONTENT_PACK_PROMPT_LABEL = "ChatGPT 또는 Gemini에 그대로 붙여넣기"
+_CONTENT_PACK_START_LABEL = "시작 방법"
+_SAVED_TOPIC_MODE = "저장된 주제 사용"
+_QUICK_TOPIC_MODE = "새 글감 바로 입력"
 _RESULT_BUTTON_LABEL = "ChatGPT 결과 붙여넣기로 이동"
 _RESULT_BUTTON_KEY = "content_pack_result_handoff"
 _REQUEST_ACTION_TOP_OFFSET_PX = 24
@@ -63,7 +66,7 @@ class _ResultActionBlock:
 
 
 class ContentPackRequestLayoutProxy:
-    """Keep the request wide and stack the two handoff actions on its right."""
+    """Keep the request wide, prioritize saved topics, and stack handoff actions."""
 
     def __init__(self, target) -> None:
         self._target = target
@@ -71,6 +74,31 @@ class ContentPackRequestLayoutProxy:
 
     def __getattr__(self, name: str):
         return getattr(self._target, name)
+
+    def radio(self, label: object, options, *args, **kwargs):
+        if str(label or "") != _CONTENT_PACK_START_LABEL:
+            return self._target.radio(label, options, *args, **kwargs)
+
+        option_values = list(options)
+        if _SAVED_TOPIC_MODE not in option_values:
+            return self._target.radio(label, option_values, *args, **kwargs)
+
+        reordered = [
+            _SAVED_TOPIC_MODE,
+            _QUICK_TOPIC_MODE,
+            *[
+                value
+                for value in option_values
+                if value not in {_SAVED_TOPIC_MODE, _QUICK_TOPIC_MODE}
+            ],
+        ]
+        render_kwargs = dict(kwargs)
+        render_kwargs["index"] = 0
+        render_kwargs["help"] = (
+            "저장된 관심 주제가 있으면 이를 기본으로 사용합니다. "
+            "새 글감 바로 입력은 저장된 주제로 시작할 수 없을 때 사용하는 보조 흐름입니다."
+        )
+        return self._target.radio(label, reordered, *args, **render_kwargs)
 
     def text_area(self, label: object, *args, **kwargs):
         if str(label or "") != _CONTENT_PACK_PROMPT_LABEL:
@@ -198,6 +226,6 @@ def _build_chatgpt_request_renderer(ui_module) -> Callable[..., None]:
 
 
 def install_content_pack_request_layout_runtime(ui_module) -> None:
-    """Refine the existing content-pack handoff without changing its workflow logic."""
+    """Refine the existing content-pack handoff without changing its storage flow."""
     ui_module._ContentPackRequestLayoutProxy = ContentPackRequestLayoutProxy
     ui_module.render_chatgpt_request_button = _build_chatgpt_request_renderer(ui_module)
