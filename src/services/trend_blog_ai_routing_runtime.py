@@ -13,6 +13,7 @@ def install_trend_blog_ai_routing_contract(discovery_module: Any | None = None) 
 
     외부 API 대기 중에는 기존 수집용 DuckDB 연결을 잡지 않습니다. 분류 실패도 이미
     성공한 출처 수집·군집 결과를 취소하지 않으며 화면은 기존 로컬 추천으로 fallback합니다.
+    기존 수집 함수의 반환값 계약도 그대로 유지합니다.
     """
     if discovery_module is None:
         from src.services import trend_discovery_service as discovery_module
@@ -43,29 +44,15 @@ def install_trend_blog_ai_routing_contract(discovery_module: Any | None = None) 
                 progress_callback(1.0, str(message or "Flash-Lite 블로그 자동 분류 중"))
 
         try:
-            routing_result, warning = run_trend_blog_ai_routing(
+            run_trend_blog_ai_routing(
                 Path(db_path),
                 progress_callback=routing_progress,
             )
-        except Exception as exc:
-            routing_result = {
-                "status": "unexpected_error",
-                "requested_clusters": 0,
-                "routed_clusters": 0,
-                "reused_clusters": 0,
-                "failed_clusters": 0,
-                "requested_batches": 0,
-                "completed_batches": 0,
-                "failed_batches": 0,
-                "error_message": str(exc),
-            }
-            warning = str(exc)
-
-        enriched = dict(result)
-        enriched["blog_routes"] = dict(routing_result or {})
-        if warning:
-            enriched["blog_route_warning"] = str(warning)
-        return enriched
+        except Exception:
+            # 블로그 분류는 부가 후처리입니다. 실패해도 성공한 출처 수집·군집 결과를
+            # 취소하거나 기존 반환 구조를 바꾸지 않습니다.
+            pass
+        return result
 
     wrapped._trend_blog_ai_routing_contract = True  # type: ignore[attr-defined]
     discovery_module.refresh_trend_sources_short_connections = wrapped
