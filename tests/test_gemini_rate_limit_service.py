@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -61,7 +60,7 @@ def test_policy_defaults_to_conservative_five_rpm_and_safe_tpm(monkeypatch) -> N
     policy = resolve_gemini_rate_limit_policy(_config())
     assert policy.rpm_limit == 5
     assert policy.tpm_limit == 250_000
-    assert policy.effective_tpm_limit == 245_000
+    assert policy.effective_tpm_limit == 240_000
 
 
 def test_model_specific_policy_can_override_verified_limit(monkeypatch) -> None:
@@ -180,6 +179,30 @@ def test_corrupt_state_file_recovers_as_empty(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("GEMINI_RATE_LIMIT_TPM_SAFETY_MARGIN", "0")
     state_path = tmp_path / "rate.json"
     state_path.write_text("not-json", encoding="utf-8")
+    clock = FakeClock()
+    limiter = SharedGeminiRateLimiter(
+        state_path=state_path,
+        clock=clock.now,
+        sleeper=clock.sleep,
+        token_estimator=lambda _text: 1,
+    )
+
+    reservation = limiter.reserve(_config(), "x")
+
+    assert reservation.wait_seconds == 0
+
+
+def test_structurally_corrupt_token_value_is_sanitized(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_RATE_LIMIT_RPM", "5")
+    monkeypatch.setenv("GEMINI_RATE_LIMIT_TPM", "1000")
+    monkeypatch.setenv("GEMINI_RATE_LIMIT_TPM_SAFETY_MARGIN", "0")
+    state_path = tmp_path / "rate.json"
+    state_path.write_text(
+        '{"version":1,"reservations":[{"request_id":"bad","scope_key":"x",'
+        '"model_name":"gemini-3.5-flash-lite","input_tokens":"bad",'
+        '"reserved_at_epoch":1000.0}]}',
+        encoding="utf-8",
+    )
     clock = FakeClock()
     limiter = SharedGeminiRateLimiter(
         state_path=state_path,
