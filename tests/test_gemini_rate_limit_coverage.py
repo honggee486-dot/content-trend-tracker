@@ -35,7 +35,7 @@ def test_manual_draft_gateway_resolves_the_same_common_gate() -> None:
 
 def test_no_other_source_file_owns_the_gemini_interactions_endpoint() -> None:
     src_root = Path(__file__).resolve().parents[1] / "src"
-    marker = "generativelanguage.googleapis.com/v1beta/interactions"
+    marker = "generativelanguage.googleapis.com/v1/interactions"
     owners = []
     for path in src_root.rglob("*.py"):
         if marker in path.read_text(encoding="utf-8", errors="replace"):
