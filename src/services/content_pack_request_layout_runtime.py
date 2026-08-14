@@ -8,15 +8,37 @@ from collections.abc import Callable
 _CONTENT_PACK_PROMPT_LABEL = "ChatGPT 또는 Gemini에 그대로 붙여넣기"
 _RESULT_BUTTON_LABEL = "ChatGPT 결과 붙여넣기로 이동"
 _RESULT_BUTTON_KEY = "content_pack_result_handoff"
+_REQUEST_ACTION_TOP_OFFSET_PX = 24
 _RESULT_BUTTON_CSS = f"""
 <style>
 .st-key-{_RESULT_BUTTON_KEY} {{
     margin-top: 0.35rem;
 }}
 .st-key-{_RESULT_BUTTON_KEY} button {{
-    min-height: 54px;
-    font-size: 14px;
-    font-weight: 600;
+    width: 100% !important;
+    height: 54px !important;
+    min-height: 54px !important;
+    box-sizing: border-box !important;
+    padding: 12px 16px !important;
+    border: 1px solid #6ea8fe !important;
+    border-radius: 8px !important;
+    background: #6ea8fe !important;
+    color: white !important;
+}}
+.st-key-{_RESULT_BUTTON_KEY} button p {{
+    margin: 0 !important;
+    color: white !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    line-height: 1.2 !important;
+}}
+.st-key-{_RESULT_BUTTON_KEY} button:hover {{
+    background: #5b9bfd !important;
+    border-color: #5b9bfd !important;
+}}
+.st-key-{_RESULT_BUTTON_KEY} button:active {{
+    background: #4f8ff0 !important;
+    border-color: #4f8ff0 !important;
 }}
 </style>
 """
@@ -92,11 +114,21 @@ def _build_chatgpt_request_renderer(ui_module) -> Callable[..., None]:
         ui_module.components.html(
             f"""
             <style>
+              html, body {{
+                margin:0;
+                padding:0;
+              }}
+              #chatgpt-request-{token} {{
+                width:100%;
+                box-sizing:border-box;
+                padding-top:{_REQUEST_ACTION_TOP_OFFSET_PX}px;
+              }}
               #chatgpt-button-{token} {{
                 display:flex;
                 align-items:center;
                 justify-content:center;
                 width:100%;
+                height:54px;
                 min-height:54px;
                 box-sizing:border-box;
                 padding:12px 16px;
@@ -108,6 +140,7 @@ def _build_chatgpt_request_renderer(ui_module) -> Callable[..., None]:
                 cursor:pointer;
                 font-size:14px;
                 font-weight:600;
+                line-height:1.2;
                 transition:background-color .15s ease,border-color .15s ease,
                            box-shadow .15s ease,transform .05s ease;
               }}
@@ -126,7 +159,7 @@ def _build_chatgpt_request_renderer(ui_module) -> Callable[..., None]:
                 outline-offset:2px;
               }}
             </style>
-            <div id="chatgpt-request-{token}" style="width:100%;">
+            <div id="chatgpt-request-{token}">
               <a id="chatgpt-button-{token}"
                  href="https://chatgpt.com/"
                  target="_blank"
@@ -158,7 +191,7 @@ def _build_chatgpt_request_renderer(ui_module) -> Callable[..., None]:
             }});
             </script>
             """,
-            height=height,
+            height=height + _REQUEST_ACTION_TOP_OFFSET_PX,
         )
 
     return render_chatgpt_request_button
