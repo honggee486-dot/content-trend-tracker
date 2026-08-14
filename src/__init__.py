@@ -7,6 +7,9 @@ import sys
 from src.services.ai_result_parser_v21_runtime import (
     install_ai_result_parser_v21_contract,
 )
+from src.services.content_pack_freshness_review_runtime import (
+    install_content_pack_freshness_review_contract,
+)
 from src.services.portal_full_window_analysis_runtime import (
     install_portal_full_window_analysis_contract,
 )
@@ -33,6 +36,9 @@ from src.services.trend_source_visibility_policy_diagnostic_runtime import (
 # 새 AI 요청서의 SEO·무료 이미지 2중 확인 schema 2.1을 검사하면서
 # 기존 저장 결과의 1.0·2.0 파싱 호환성은 그대로 유지합니다.
 install_ai_result_parser_v21_contract()
+# 모든 새 AI 요청서는 실제 답변 시점의 현재 날짜와 최신 웹 검색을 기준으로 삼고,
+# 초안 작성 뒤 두 번의 추가 웹 재검증을 끝낸 뒤에만 최종 JSON을 출력합니다.
+install_content_pack_freshness_review_contract()
 # 앱·예약 수집·진단이 같은 분석 범위를 사용하도록 Streamlit 여부와 무관하게
 # NAVER·Daum 최근 분석 시간 범위 전체 계약을 먼저 설치합니다.
 install_portal_full_window_analysis_contract()
