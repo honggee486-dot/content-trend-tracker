@@ -120,6 +120,9 @@ if "streamlit" in sys.modules:
     from src.services.content_pack_request_layout_runtime import (
         install_content_pack_request_layout_runtime,
     )
+    from src.services.content_workflow_ui_runtime import (
+        install_content_workflow_ui_runtime,
+    )
     from src.trend_candidate_blog_recommendation_ui import (
         install_trend_candidate_blog_recommendation_ui,
     )
@@ -129,6 +132,8 @@ if "streamlit" in sys.modules:
 
     # AI 요청서 본문 폭과 ChatGPT 수동 전달 버튼의 배치를 현재 실사용 화면에 맞춥니다.
     install_content_pack_request_layout_runtime(_ui_module)
+    # AI 결과 단계 버튼·편집 저장 규칙·HTML 미리보기는 기존 app 흐름을 보존한 채 보정합니다.
+    install_content_workflow_ui_runtime(_ui_module)
     install_clustering_settings_ui_contract(_ui_module)
     install_trend_candidate_blog_recommendation_ui(_ui_module)
     install_trend_blog_recommendation_ui_runtime(st_module=sys.modules["streamlit"])
