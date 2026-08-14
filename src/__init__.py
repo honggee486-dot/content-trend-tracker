@@ -48,8 +48,8 @@ install_content_pack_freshness_review_contract()
 # 앱·예약 수집·진단이 같은 분석 범위를 사용하도록 Streamlit 여부와 무관하게
 # NAVER·Daum 최근 분석 시간 범위 전체 계약을 먼저 설치합니다.
 install_portal_full_window_analysis_contract()
-# Gemini 3.7 Flash 주제 방향은 같은 요청을 자동 재시도하지 않고, 일시적 서비스
-# 오류·타임아웃일 때만 Gemini 3.6 Flash로 한 번 fallback해 무료 RPD를 보호합니다.
+# Gemini 3.7 Flash 주제 방향은 같은 요청을 자동 재시도하지 않고, 서비스 오류·
+# 타임아웃·429 rate limit·일일 quota 소진이면 Gemini 3.6 Flash로 한 번 fallback합니다.
 install_topic_angle_model_fallback_contract()
 # 강한 YouTube·Google Trends·위키 신호는 모든 실행 경로에서 같은 기준으로
 # 추천이 아닌 검토 후보까지만 승격합니다. 사실 근거 안전장치는 그대로 유지합니다.
