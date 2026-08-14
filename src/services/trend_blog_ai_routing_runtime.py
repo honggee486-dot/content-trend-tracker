@@ -7,6 +7,9 @@ from typing import Any
 
 from src.config import DEFAULT_DB_PATH
 from src.services.trend_blog_ai_routing_service import run_trend_blog_ai_routing
+from src.services.trend_candidate_ai_evaluation_runtime import (
+    install_trend_candidate_ai_evaluation_contract,
+)
 
 
 def install_trend_blog_ai_routing_contract(discovery_module: Any | None = None) -> None:
@@ -18,6 +21,10 @@ def install_trend_blog_ai_routing_contract(discovery_module: Any | None = None) 
     """
     if discovery_module is None:
         from src.services import trend_discovery_service as discovery_module
+
+    # 같은 데이터 검토 모델의 전체 글감 평가는 최종 2차 군집 저장 뒤, 블로그 분류와
+    # 주제방향 생성보다 먼저 실행되도록 내부 래퍼를 먼저 설치합니다.
+    install_trend_candidate_ai_evaluation_contract(discovery_module)
 
     original = getattr(discovery_module, "refresh_trend_sources_short_connections", None)
     if not callable(original) or getattr(original, "_trend_blog_ai_routing_contract", False):
