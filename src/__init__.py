@@ -4,6 +4,14 @@ from __future__ import annotations
 
 import sys
 
+# src.services.* 를 직접 가져오는 CLI·예약 작업도 먼저 src 패키지를 거치므로,
+# 다른 런타임 래퍼가 Gemini 함수를 잡기 전에 공통 RPM·TPM 관문부터 설치합니다.
+from src.services.gemini_rate_limit_runtime import (
+    install_gemini_common_rate_limit_contract,
+)
+
+install_gemini_common_rate_limit_contract()
+
 from src.services.ai_result_parser_v21_runtime import (
     install_ai_result_parser_v21_contract,
 )
