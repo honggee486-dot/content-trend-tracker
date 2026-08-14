@@ -3,6 +3,7 @@ from pathlib import Path
 
 from src.services.content_pack_freshness_review_runtime import (
     build_latest_research_review_section,
+    ensure_latest_research_review_prompt,
 )
 from src.services.content_pack_service import build_content_pack
 
@@ -81,13 +82,31 @@ def test_ai_request_requires_actual_response_date_and_latest_web_research() -> N
     )
     prompt = _build_prompt()
 
-    assert "요청서 생성 기준일: 2026-08-14" in section
+    assert "요청서 확인 기준일: 2026-08-14" in section
     assert "실제 답변을 작성하기 시작할 때 현재 날짜를 다시 확인" in prompt
     assert "실제 답변 시점의 날짜를 우선" in prompt
     assert "웹 검색을 반드시 수행" in prompt
     assert "기존 지식이나 자료팩만으로 최신 사실을 확정하지 않습니다" in prompt
     assert "가장 최신의 공식 자료와 1차 출처" in prompt
     assert "시행일·적용일·기준일·갱신일" in prompt
+
+
+def test_saved_request_refreshes_review_date_without_mutating_database_text() -> None:
+    legacy = "기존 요청서\n\n[SEO 필수 규칙]\n- 기존 규칙"
+    first = ensure_latest_research_review_prompt(
+        legacy,
+        reference_date=date(2026, 8, 14),
+    )
+    refreshed = ensure_latest_research_review_prompt(
+        first,
+        reference_date=date(2026, 8, 15),
+    )
+
+    assert first.count("[현재 날짜·최신 검색·2중 재검증 필수]") == 1
+    assert refreshed.count("[현재 날짜·최신 검색·2중 재검증 필수]") == 1
+    assert "요청서 확인 기준일: 2026-08-15" in refreshed
+    assert "요청서 확인 기준일: 2026-08-14" not in refreshed
+    assert "[SEO 필수 규칙]" in refreshed
 
 
 def test_ai_request_requires_two_post_draft_web_rechecks_before_final_json() -> None:

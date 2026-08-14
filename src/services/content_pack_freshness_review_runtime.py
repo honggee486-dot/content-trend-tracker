@@ -7,6 +7,7 @@ from typing import Callable
 
 
 LATEST_RESEARCH_REVIEW_MARKER = "[현재 날짜·최신 검색·2중 재검증 필수]"
+_SEO_MARKER = "[SEO 필수 규칙]"
 
 
 def build_latest_research_review_section(
@@ -15,8 +16,8 @@ def build_latest_research_review_section(
 ) -> str:
     created_on = (reference_date or date.today()).isoformat()
     return f"""{LATEST_RESEARCH_REVIEW_MARKER}
-- 요청서 생성 기준일: {created_on}
-- 실제 답변을 작성하기 시작할 때 현재 날짜를 다시 확인하고, 그 날짜를 최종 조사 기준일로 삼습니다. 요청서 생성일과 답변 시점의 날짜가 다르면 실제 답변 시점의 날짜를 우선합니다.
+- 요청서 확인 기준일: {created_on}
+- 실제 답변을 작성하기 시작할 때 현재 날짜를 다시 확인하고, 그 날짜를 최종 조사 기준일로 삼습니다. 요청서 확인일과 답변 시점의 날짜가 다르면 실제 답변 시점의 날짜를 우선합니다.
 - 주제가 시점 의존으로 분류됐는지와 관계없이 웹 검색을 반드시 수행합니다. 기존 지식이나 자료팩만으로 최신 사실을 확정하지 않습니다.
 - 조사 기준일 현재 확인 가능한 가장 최신의 공식 자료와 1차 출처를 우선 검색하고, 게시일뿐 아니라 시행일·적용일·기준일·갱신일도 함께 비교합니다.
 - 더 오래된 자료와 최신 자료가 충돌하면 최신 공식 자료의 적용 범위를 우선하되, 변경 전·후 기준이 글에 필요하면 날짜를 명시해 구분합니다.
@@ -38,29 +39,68 @@ def build_latest_research_review_section(
 """
 
 
+def ensure_latest_research_review_prompt(
+    prompt: object,
+    *,
+    reference_date: date | None = None,
+) -> str:
+    text = str(prompt or "")
+    section = build_latest_research_review_section(reference_date=reference_date)
+    marker_index = text.find(LATEST_RESEARCH_REVIEW_MARKER)
+    if marker_index >= 0:
+        seo_index = text.find(_SEO_MARKER, marker_index)
+        if seo_index >= 0:
+            before = text[:marker_index].rstrip()
+            after = text[seo_index:].lstrip()
+            return f"{before}\n\n{section}\n{after}"
+        return f"{text[:marker_index].rstrip()}\n\n{section}\n"
+
+    seo_index = text.find(_SEO_MARKER)
+    if seo_index >= 0:
+        before = text[:seo_index].rstrip()
+        after = text[seo_index:].lstrip()
+        return f"{before}\n\n{section}\n{after}"
+    return f"{text.rstrip()}\n\n{section}\n"
+
+
+def _refresh_prompt_record(record):
+    if not isinstance(record, dict) or "prompt_text" not in record:
+        return record
+    refreshed = dict(record)
+    refreshed["prompt_text"] = ensure_latest_research_review_prompt(
+        refreshed.get("prompt_text")
+    )
+    return refreshed
+
+
 def install_content_pack_freshness_review_contract() -> None:
     content_pack_module = importlib.import_module("src.services.content_pack_service")
-    target: Callable[..., str] = content_pack_module.build_ai_prompt
-    if getattr(target, "_latest_research_review_wrapper", False):
+    build_target: Callable[..., str] = content_pack_module.build_ai_prompt
+    if getattr(build_target, "_latest_research_review_wrapper", False):
         return
 
-    @wraps(target)
-    def wrapped(*args, **kwargs) -> str:
-        prompt = target(*args, **kwargs)
-        if LATEST_RESEARCH_REVIEW_MARKER in prompt:
-            return prompt
+    @wraps(build_target)
+    def wrapped_build(*args, **kwargs) -> str:
+        return ensure_latest_research_review_prompt(build_target(*args, **kwargs))
 
-        section = build_latest_research_review_section()
-        seo_marker = "\n[SEO 필수 규칙]"
-        if seo_marker in prompt:
-            prompt = prompt.replace(
-                seo_marker,
-                f"\n\n{section}\n[SEO 필수 규칙]",
-                1,
-            )
-        else:
-            prompt = f"{prompt.rstrip()}\n\n{section}\n"
-        return prompt
+    get_target = content_pack_module.get_content_pack
 
-    wrapped._latest_research_review_wrapper = True  # type: ignore[attr-defined]
-    content_pack_module.build_ai_prompt = wrapped
+    @wraps(get_target)
+    def wrapped_get(*args, **kwargs):
+        return _refresh_prompt_record(get_target(*args, **kwargs))
+
+    list_target = content_pack_module.list_content_packs
+
+    @wraps(list_target)
+    def wrapped_list(*args, **kwargs):
+        return [
+            _refresh_prompt_record(item)
+            for item in list_target(*args, **kwargs)
+        ]
+
+    wrapped_build._latest_research_review_wrapper = True  # type: ignore[attr-defined]
+    wrapped_get._latest_research_review_wrapper = True  # type: ignore[attr-defined]
+    wrapped_list._latest_research_review_wrapper = True  # type: ignore[attr-defined]
+    content_pack_module.build_ai_prompt = wrapped_build
+    content_pack_module.get_content_pack = wrapped_get
+    content_pack_module.list_content_packs = wrapped_list
