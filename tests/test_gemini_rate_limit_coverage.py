@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 
 def test_known_gemini_generation_features_share_the_common_gate() -> None:
     import src.services.gemini_service as gemini_service
@@ -29,3 +31,14 @@ def test_manual_draft_gateway_resolves_the_same_common_gate() -> None:
         gemini_service._call_interactions_api.__globals__["call_gemini_structured_output"]
         is gemini_service.call_gemini_structured_output
     )
+
+
+def test_no_other_source_file_owns_the_gemini_interactions_endpoint() -> None:
+    src_root = Path(__file__).resolve().parents[1] / "src"
+    marker = "generativelanguage.googleapis.com/v1beta/interactions"
+    owners = []
+    for path in src_root.rglob("*.py"):
+        if marker in path.read_text(encoding="utf-8", errors="replace"):
+            owners.append(path.relative_to(src_root).as_posix())
+
+    assert owners == ["services/gemini_service.py"]
