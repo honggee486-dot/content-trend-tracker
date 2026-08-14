@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import sys
 
+from src.services.ai_result_parser_v21_runtime import (
+    install_ai_result_parser_v21_contract,
+)
 from src.services.portal_full_window_analysis_runtime import (
     install_portal_full_window_analysis_contract,
 )
@@ -27,6 +30,9 @@ from src.services.trend_source_visibility_policy_diagnostic_runtime import (
 )
 
 
+# 새 AI 요청서의 SEO·무료 이미지 2중 확인 schema 2.1을 검사하면서
+# 기존 저장 결과의 1.0·2.0 파싱 호환성은 그대로 유지합니다.
+install_ai_result_parser_v21_contract()
 # 앱·예약 수집·진단이 같은 분석 범위를 사용하도록 Streamlit 여부와 무관하게
 # NAVER·Daum 최근 분석 시간 범위 전체 계약을 먼저 설치합니다.
 install_portal_full_window_analysis_contract()
