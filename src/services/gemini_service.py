@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -810,7 +811,7 @@ def call_gemini_structured_output(
                 _clean_text(exc.headers.get("Retry-After") if exc.headers else ""),
             )
         ) from exc
-    except TimeoutError as exc:
+    except (TimeoutError, socket.timeout) as exc:
         raise GeminiHttpError(
             _ApiErrorInfo(
                 http_status=0,
@@ -825,7 +826,7 @@ def call_gemini_structured_output(
         ) from exc
     except urllib.error.URLError as exc:
         reason = getattr(exc, "reason", None)
-        if isinstance(reason, TimeoutError):
+        if isinstance(reason, (TimeoutError, socket.timeout)) or "timed out" in str(reason).casefold():
             error_type = "request_timeout"
             message = (
                 f"Gemini API 응답이 {effective_timeout}초 안에 완료되지 않아 연결을 종료했습니다. "

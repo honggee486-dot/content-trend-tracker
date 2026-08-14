@@ -7,6 +7,7 @@ import pandas as pd
 
 from src.services.dashboard_refresh_progress_service import (
     DashboardRefreshProgress,
+    is_dashboard_refresh_active,
     read_dashboard_refresh_progress,
 )
 
@@ -119,7 +120,11 @@ def _panel_label(
     job: dict[str, Any] | None,
     notice: str,
 ) -> tuple[str, bool]:
-    if progress is not None and progress.active:
+    if (
+        progress is not None
+        and progress.active
+        and is_dashboard_refresh_active(progress)
+    ):
         message = progress.message or "최신 데이터 수집·분석 중"
         return f"실행 현황 · 진행 중 {progress.value:,}% · {message}", True
     if _active_clustering(job):
@@ -143,7 +148,11 @@ def _render_panel(st_module: Any) -> None:
     progress = _remember_progress(st_module)
     job = _LAST_PRIMARY_JOB
     notice = _LAST_ATTEMPT_NOTICE
-    active_refresh = bool(progress is not None and progress.active)
+    active_refresh = bool(
+        progress is not None
+        and progress.active
+        and is_dashboard_refresh_active(progress)
+    )
     active_cluster = _active_clustering(job)
     label, expanded = _panel_label(progress, job, notice)
     with st_module.expander(label, expanded=expanded):
@@ -255,7 +264,12 @@ def _install_action_button_guard(st_module: Any) -> None:
     def wrapped(self: Any, label: Any, *args: Any, **kwargs: Any):
         clean_label = str(label or "").strip()
         progress = _remember_progress(st_module)
-        if clean_label in _TARGET_ACTIONS and progress is not None and progress.active:
+        if (
+            clean_label in _TARGET_ACTIONS
+            and progress is not None
+            and progress.active
+            and is_dashboard_refresh_active(progress)
+        ):
             call_kwargs = dict(kwargs)
             call_kwargs["disabled"] = True
             call_kwargs["help"] = (

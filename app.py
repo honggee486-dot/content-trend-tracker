@@ -259,6 +259,11 @@ try:
 except Exception as exc:
     if not is_database_lock_error(exc):
         raise
+    from src.dashboard_background_refresh_ui import (
+        render_lightweight_refresh_dashboard_if_active,
+    )
+    if render_lightweight_refresh_dashboard_if_active(st):
+        st.stop()
     st.warning(
         "자동 수집 결과를 DuckDB에 저장하는 짧은 구간과 겹쳤습니다. "
         "잠시 후 아래 버튼으로 다시 시도하세요."

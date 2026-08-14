@@ -237,6 +237,7 @@ def classify_cluster_batch(
     batch_id: str = "cluster_batch_0001",
     max_candidates: int = 200,
     api_call: Callable[..., tuple[Any, ...]] = call_gemini_structured_output,
+    progress_callback: Callable[[float, str], None] | None = None,
 ) -> ClusterGroupingExecution:
     selected = select_cluster_batch_candidates(
         candidates,

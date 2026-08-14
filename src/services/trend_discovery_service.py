@@ -2613,6 +2613,7 @@ def calculate_prepared_trend_rankings(
             batch_candidates,
             batch_id="cluster_batch_0001",
             max_candidates=preparation.ai_clustering_batch_size,
+            progress_callback=lambda ratio, msg: notify(0.20 + ratio * 0.05, msg),
         )
         ai_calls = execution.calls
         batch_log["status"] = execution.status

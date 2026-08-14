@@ -45,6 +45,9 @@ SCENARIO_TESTS: dict[str, tuple[str, ...]] = {
         "tests/test_refresh_history_integration.py",
         "tests/test_post_collection_cleanup_runtime.py",
         "tests/test_dashboard_background_refresh_ui.py",
+        "tests/test_dashboard_refresh_progress_service.py",
+        "tests/test_dashboard_operation_status_ui.py",
+        "tests/test_dashboard_refresh_stale_recovery.py",
     ),
     "cleanup": (
         "tests/test_data_maintenance_service.py",
@@ -308,13 +311,18 @@ def classify_file(path_str: str) -> str | None:
     if (
         p_lower.startswith("src/services/post_collection_cleanup_")
         or p_lower.startswith("src/services/collection_history_")
+        or p_lower.startswith("src/services/dashboard_refresh_progress_")
         or p_lower.startswith("src/adapters/")
-        or p_lower == "scripts/refresh_trends.py"
+        or p_lower in ("scripts/refresh_trends.py", "scripts/refresh_trends_dashboard.py")
+        or p_lower in ("src/dashboard_background_refresh_ui.py", "src/dashboard_operation_status_ui.py")
         or p_lower.startswith("tests/test_short_database_")
         or p_lower.startswith("tests/test_short_connection_")
         or p_lower.startswith("tests/test_refresh_history_")
         or p_lower.startswith("tests/test_post_collection_")
         or p_lower.startswith("tests/test_dashboard_background_refresh_")
+        or p_lower.startswith("tests/test_dashboard_refresh_progress_")
+        or p_lower.startswith("tests/test_dashboard_operation_status_")
+        or p_lower.startswith("tests/test_dashboard_refresh_stale_")
     ):
         return "latest-data"
 

@@ -115,6 +115,10 @@ def test_running_progress_file_is_copied_to_streamlit_session(monkeypatch) -> No
         "src.dashboard_background_refresh_ui.read_dashboard_refresh_progress",
         lambda: progress,
     )
+    monkeypatch.setattr(
+        "src.dashboard_background_refresh_ui.is_dashboard_refresh_active",
+        lambda p: True,
+    )
 
     sync_dashboard_background_progress(fake)
 

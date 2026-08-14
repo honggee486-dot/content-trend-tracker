@@ -47,7 +47,12 @@ def test_refresh_history_is_newest_first_with_elapsed_progress_and_message() -> 
     assert rows[1]["내용"] == "수집 준비 중"
 
 
-def test_panel_is_expanded_only_while_work_is_active() -> None:
+def test_panel_is_expanded_only_while_work_is_active(monkeypatch) -> None:
+    monkeypatch.setattr(
+        ui,
+        "is_dashboard_refresh_active",
+        lambda p: p.active if p else False,
+    )
     active_label, active_expanded = ui._panel_label(_progress(), None, "")
     finished_label, finished_expanded = ui._panel_label(
         _progress(status="success"),
@@ -91,6 +96,7 @@ def test_action_buttons_are_disabled_while_refresh_progress_is_active(
 
     monkeypatch.setattr(DeltaGenerator, "button", fake_button)
     monkeypatch.setattr(ui, "read_dashboard_refresh_progress", lambda: _progress())
+    monkeypatch.setattr(ui, "is_dashboard_refresh_active", lambda p: True)
     st_module = SimpleNamespace(session_state={})
 
     ui._install_action_button_guard(st_module)

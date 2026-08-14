@@ -12,6 +12,7 @@ from src.config import PROJECT_ROOT
 from src.services.dashboard_refresh_progress_service import (
     clear_dashboard_refresh_progress,
     finish_dashboard_refresh_progress,
+    is_dashboard_refresh_active,
     read_dashboard_refresh_progress,
     start_dashboard_refresh_progress,
 )
@@ -210,7 +211,11 @@ def _request_full_app_rerun(st_module: Any) -> None:
         rerun()
 
 
-def sync_dashboard_background_progress(st_module: Any) -> None:
+def sync_dashboard_background_progress(
+    st_module: Any,
+    *,
+    is_refresh_active_fn: Callable[..., bool] | None = None,
+) -> None:
     """별도 프로세스의 상태 파일을 현재 Streamlit 세션의 기존 게이지 상태로 옮깁니다."""
     state = _state(st_module)
     if state is None:
@@ -218,16 +223,49 @@ def sync_dashboard_background_progress(st_module: Any) -> None:
     progress = read_dashboard_refresh_progress()
     if progress is None:
         return
+    active_checker = (
+        is_refresh_active_fn
+        if is_refresh_active_fn is not None
+        else is_dashboard_refresh_active
+    )
     if progress.active:
-        state[_PROGRESS_KEY] = {
-            "value": progress.value,
-            "message": progress.message or "최신 데이터 수집·분석 중",
-            "status": progress.status,
-            "run_id": progress.run_id,
-            "pid": progress.pid,
-            "started_at": progress.started_at,
-            "updated_at": progress.updated_at,
+        if active_checker(progress):
+            state[_PROGRESS_KEY] = {
+                "value": progress.value,
+                "message": progress.message or "최신 데이터 수집·분석 중",
+                "status": progress.status,
+                "run_id": progress.run_id,
+                "pid": progress.pid,
+                "started_at": progress.started_at,
+                "updated_at": progress.updated_at,
+            }
+            return
+
+        # 비정상 종료된 stale 작업 감지: 안전하게 실패 상태로 종료하고 알림
+        stale_pid_text = f" (PID {progress.pid})" if progress.pid else ""
+        warning_message = (
+            f"최신 데이터 수집·분석 작업이 예기치 않게 중단되었습니다{stale_pid_text}."
+            " · 상태를 확인하고 필요 시 다시 시도해 주세요."
+        )
+        finish_dashboard_refresh_progress(
+            success=False,
+            message="수집 프로세스가 예기치 않게 종료되어 중단되었습니다.",
+            summary="수집 프로세스가 예기치 않게 종료되었습니다. (상태 확인 필요)",
+            error_message=f"수집 프로세스 비정상 종료{stale_pid_text}",
+            run_id=progress.run_id,
+            pid=progress.pid,
+        )
+        state.pop(_PROGRESS_KEY, None)
+        state.pop(_FULL_APP_REFRESH_AT_KEY, None)
+        state[_FLASH_KEY] = {
+            "summary": "최근 실행: 수집 작업 중단",
+            "source_details": [],
+            "maintenance_detail": None,
+            "ranking_detail": None,
+            "topic_angle_detail": None,
+            "warnings": [warning_message],
         }
+        clear_dashboard_refresh_progress()
         return
 
     state.pop(_PROGRESS_KEY, None)
@@ -278,6 +316,95 @@ def _prepare_flash(pid: int, *, error: Exception | None = None) -> dict[str, Any
     }
 
 
+def render_lightweight_refresh_dashboard(
+    st_module: Any,
+    progress: DashboardRefreshProgress | None = None,
+) -> None:
+    """수집 중 DuckDB 잠금 충돌을 막기 위해 상태 파일만으로 경량 진행 화면을 렌더링합니다."""
+    import pandas as pd
+    from src.dashboard_operation_status_ui import _format_time, _refresh_rows
+
+    st_module.title("콘텐츠 트렌드 트래커")
+    st_module.caption(
+        "최신 데이터 수집·분석이 백그라운드에서 진행 중입니다. "
+        "완료되면 메인 대시보드로 자동 복귀합니다."
+    )
+
+    fragment = getattr(st_module, "fragment", None)
+    if not callable(fragment):
+        current = progress or read_dashboard_refresh_progress()
+        if current is not None and current.active:
+            text = f"진행률 {current.value}% · {current.message or '수집 중'}"
+            st_module.progress(current.value, text=text)
+            rows = _refresh_rows(current)
+            if rows:
+                st_module.dataframe(
+                    pd.DataFrame(rows),
+                    hide_index=True,
+                    width="stretch",
+                    height=min(420, 74 + len(rows) * 35),
+                )
+        return
+
+    @fragment(run_every=2.0)
+    def live_lightweight_screen():
+        current = read_dashboard_refresh_progress()
+        if current is None or not (
+            current.active and is_dashboard_refresh_active(current)
+        ):
+            sync_dashboard_background_progress(st_module)
+            _request_full_app_rerun(st_module)
+            return
+
+        percent = max(0, min(100, int(current.value or 0)))
+        text = f"진행률 {percent}% · {current.message or '수집 중'}"
+        st_module.progress(percent, text=text)
+
+        metadata = [f"시작 {_format_time(current.started_at)}"]
+        if current.pid:
+            metadata.append(f"PID {current.pid:,}")
+        if current.run_id:
+            metadata.append(f"실행 ID {current.run_id}")
+        st_module.caption(" · ".join(metadata))
+
+        rows = _refresh_rows(current)
+        if rows:
+            st_module.dataframe(
+                pd.DataFrame(rows),
+                hide_index=True,
+                width="stretch",
+                height=min(420, 74 + len(rows) * 35),
+            )
+        st_module.info(
+            "수집 및 군집 작업이 안전하게 진행되고 있습니다. 잠시만 기다려 주세요."
+        )
+
+    live_lightweight_screen()
+
+
+def render_lightweight_refresh_dashboard_if_active(
+    st_module: Any,
+    *,
+    is_refresh_active_fn: Callable[..., bool] | None = None,
+) -> bool:
+    """활성 수집 작업이 있으면 경량 화면을 표시하고 후속 DB 쿼리를 차단합니다."""
+    progress = read_dashboard_refresh_progress()
+    if progress is None or not progress.active:
+        return False
+    active_checker = (
+        is_refresh_active_fn
+        if is_refresh_active_fn is not None
+        else is_dashboard_refresh_active
+    )
+    if not active_checker(progress):
+        return False
+    render_lightweight_refresh_dashboard(st_module, progress)
+    stop = getattr(st_module, "stop", None)
+    if callable(stop):
+        stop()
+    return True
+
+
 def _install_page_config_progress_sync(st_module: Any) -> None:
     original = getattr(st_module, "set_page_config", None)
     if not callable(original) or getattr(original, "_dashboard_progress_sync", False):
@@ -285,8 +412,10 @@ def _install_page_config_progress_sync(st_module: Any) -> None:
 
     @wraps(original)
     def wrapped(*args: Any, **kwargs: Any):
+        result = original(*args, **kwargs)
         sync_dashboard_background_progress(st_module)
-        return original(*args, **kwargs)
+        render_lightweight_refresh_dashboard_if_active(st_module)
+        return result
 
     wrapped._dashboard_progress_sync = True  # type: ignore[attr-defined]
     st_module.set_page_config = wrapped
@@ -316,24 +445,10 @@ def _install_progress_fragment(st_module: Any) -> None:
         def live_progress():
             current = read_dashboard_refresh_progress()
             if current is None:
-                rendered = original(*args, **kwargs)
-                current_state = _state(st_module)
-                if current_state is not None and _should_request_full_app_rerun(
-                    current_state,
-                    now=monotonic(),
-                ):
-                    _request_full_app_rerun(st_module)
-                return rendered
-            if current.active:
+                return original(*args, **kwargs)
+            if current.active and is_dashboard_refresh_active(current):
                 text = f"진행률 {current.value}% · {current.message or '수집 중'}"
-                rendered = original(current.value, text=text)
-                current_state = _state(st_module)
-                if current_state is not None and _should_request_full_app_rerun(
-                    current_state,
-                    now=monotonic(),
-                ):
-                    _request_full_app_rerun(st_module)
-                return rendered
+                return original(current.value, text=text)
             sync_dashboard_background_progress(st_module)
             _request_full_app_rerun(st_module)
             return None
