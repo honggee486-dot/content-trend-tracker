@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import wraps
+import os
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,12 @@ def install_trend_blog_ai_routing_contract(discovery_module: Any | None = None) 
     def wrapped(*args, **kwargs):
         result = original(*args, **kwargs)
         if not isinstance(result, dict):
+            return result
+
+        # 실제 수집 실행 ID가 있는 운영 경로만 자동 분류합니다. 로컬 pytest는 .env의
+        # 실제 API 키를 읽을 수 있으므로 테스트 중에는 외부 Gemini 호출을 절대 하지 않습니다.
+        collection_run_id = str(kwargs.get("collection_run_id") or "").strip()
+        if not collection_run_id or os.environ.get("PYTEST_CURRENT_TEST"):
             return result
 
         db_path = (
