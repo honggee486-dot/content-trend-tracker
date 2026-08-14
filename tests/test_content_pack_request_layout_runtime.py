@@ -87,11 +87,14 @@ def test_request_layout_uses_wide_prompt_and_stacked_actions() -> None:
         )
     ]
     css = "\n".join(fake.outer_columns[1].markdown_calls)
-    assert "min-height: 54px" in css
+    assert "height: 54px !important" in css
+    assert "font-size: 14px !important" in css
+    assert "font-weight: 600 !important" in css
+    assert "button p" in css
     assert "margin-top: 0.35rem" in css
 
 
-def test_chatgpt_button_matches_primary_scale_and_has_hover_feedback() -> None:
+def test_chatgpt_button_matches_result_button_scale_and_textarea_top() -> None:
     components = _FakeComponents()
     ui_module = SimpleNamespace(
         _component_token=lambda key: "token",
@@ -107,8 +110,11 @@ def test_chatgpt_button_matches_primary_scale_and_has_hover_feedback() -> None:
 
     assert len(components.calls) == 1
     body, height = components.calls[0]
-    assert height == 84
-    assert "min-height:54px" in body
+    assert height == 108
+    assert "padding-top:24px" in body
+    assert "height:54px" in body
+    assert "font-size:14px" in body
+    assert "font-weight:600" in body
     assert "#chatgpt-button-token:hover" in body
     assert "background:#6ea8fe" in body
     assert 'href="https://chatgpt.com/"' in body
