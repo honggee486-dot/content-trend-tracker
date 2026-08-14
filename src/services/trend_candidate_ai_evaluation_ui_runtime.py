@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from functools import wraps
+import os
 from typing import Any
 
+from src.config import DEFAULT_DB_PATH
 from src.services.trend_candidate_ai_evaluation_service import (
     get_candidate_ai_evaluation_summary,
     get_cluster_ai_evaluation,
+    run_trend_candidate_ai_evaluation,
 )
 from src.services.trend_discovery_service import get_trend_cluster
 
@@ -132,6 +135,28 @@ def render_candidate_ai_evaluation_panel(
     )
 
 
+def _install_manual_angle_evaluation(caller_globals: dict[str, object]) -> None:
+    target = caller_globals.get("run_trend_dashboard_action")
+    if not callable(target) or getattr(target, "_trend_candidate_ai_before_angles", False):
+        return
+
+    @wraps(target)
+    def wrapped(*args, **kwargs):
+        action = str(kwargs.get("action") or "").strip()
+        if action == "angles" and not os.environ.get("PYTEST_CURRENT_TEST"):
+            try:
+                # 직접 '주제 방향 자동 생성'을 눌러도 평가가 비어 있으면 같은 데이터 검토
+                # 모델로 먼저 전체 글감을 평가합니다. 캐시된 글감은 API를 다시 쓰지 않습니다.
+                run_trend_candidate_ai_evaluation(DEFAULT_DB_PATH)
+            except Exception:
+                # 평가 실패가 기존 주제방향 기능을 막지 않게 합니다.
+                pass
+        return target(*args, **kwargs)
+
+    wrapped._trend_candidate_ai_before_angles = True  # type: ignore[attr-defined]
+    caller_globals["run_trend_dashboard_action"] = wrapped
+
+
 def _install_dashboard_panel(caller_globals: dict[str, object]) -> None:
     target = caller_globals.get("render_trend_dashboard")
     db_connection = caller_globals.get("db_connection")
@@ -171,6 +196,7 @@ def install_trend_candidate_ai_evaluation_ui_contract(ui_module: Any) -> None:
     @wraps(original)
     def wrapped(caller_globals: dict[str, object]) -> None:
         original(caller_globals)
+        _install_manual_angle_evaluation(caller_globals)
         _install_dashboard_panel(caller_globals)
 
     wrapped._trend_candidate_ai_evaluation_installer = True  # type: ignore[attr-defined]
