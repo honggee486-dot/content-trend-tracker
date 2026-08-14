@@ -18,7 +18,7 @@ from src.services.trend_cluster_token_runtime import GLOBAL_TOKEN_ESTIMATOR
 
 DEFAULT_RPM_LIMIT = 5
 DEFAULT_TPM_LIMIT = 250_000
-DEFAULT_TPM_SAFETY_MARGIN = 5_000
+DEFAULT_TPM_SAFETY_MARGIN = 10_000
 DEFAULT_WINDOW_SECONDS = 60.0
 DEFAULT_BOUNDARY_GUARD_SECONDS = 0.75
 _STATE_VERSION = 1
@@ -54,6 +54,13 @@ def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
     except ValueError:
         value = int(default)
     return min(max(value, minimum), maximum)
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
 
 
 def _normalized_model_name(value: Any) -> str:
@@ -106,11 +113,10 @@ def resolve_gemini_rate_limit_policy(config: GeminiConfig) -> GeminiRateLimitPol
         minimum=0,
         maximum=max(0, tpm_limit - 1),
     )
-    effective_tpm = max(1, tpm_limit - margin)
     return GeminiRateLimitPolicy(
         rpm_limit=rpm_limit,
         tpm_limit=tpm_limit,
-        effective_tpm_limit=effective_tpm,
+        effective_tpm_limit=max(1, tpm_limit - margin),
         window_seconds=DEFAULT_WINDOW_SECONDS,
     )
 
@@ -208,10 +214,7 @@ class SharedGeminiRateLimiter:
         temp_path = self.state_path.with_name(
             f"{self.state_path.name}.{os.getpid()}.{uuid4().hex}.tmp"
         )
-        payload = {
-            "version": _STATE_VERSION,
-            "reservations": entries,
-        }
+        payload = {"version": _STATE_VERSION, "reservations": entries}
         try:
             temp_path.write_text(
                 json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
@@ -228,7 +231,11 @@ class SharedGeminiRateLimiter:
             ) from exc
 
     @staticmethod
-    def _pruned(entries: list[dict[str, Any]], now: float, window: float) -> list[dict[str, Any]]:
+    def _pruned(
+        entries: list[dict[str, Any]],
+        now: float,
+        window: float,
+    ) -> list[dict[str, Any]]:
         cutoff = now - window
         result: list[dict[str, Any]] = []
         for row in entries:
@@ -237,7 +244,10 @@ class SharedGeminiRateLimiter:
             except (TypeError, ValueError):
                 continue
             if reserved_at > cutoff:
-                result.append(row)
+                clean = dict(row)
+                clean["reserved_at_epoch"] = reserved_at
+                clean["input_tokens"] = max(0, _safe_int(row.get("input_tokens"), 0))
+                result.append(clean)
         result.sort(key=lambda row: float(row.get("reserved_at_epoch", 0.0)))
         return result
 
@@ -265,10 +275,7 @@ class SharedGeminiRateLimiter:
     ) -> float:
         candidate_delays = {0.0}
         for row in matching:
-            try:
-                reserved_at = float(row.get("reserved_at_epoch", 0.0))
-            except (TypeError, ValueError):
-                continue
+            reserved_at = float(row.get("reserved_at_epoch", 0.0))
             candidate_delays.add(
                 max(
                     0.0,
@@ -286,7 +293,9 @@ class SharedGeminiRateLimiter:
                 if float(row.get("reserved_at_epoch", 0.0))
                 > future_now - policy.window_seconds
             ]
-            used_tokens = sum(max(0, int(row.get("input_tokens") or 0)) for row in active)
+            used_tokens = sum(
+                max(0, _safe_int(row.get("input_tokens"), 0)) for row in active
+            )
             if (
                 len(active) + 1 <= policy.rpm_limit
                 and used_tokens + requested_tokens <= policy.effective_tpm_limit
