@@ -7,7 +7,14 @@ from typing import Any
 
 PROTECTED_TOPIC_ANGLE_MODEL = "gemini-3.7-flash"
 TOPIC_ANGLE_FALLBACK_MODEL = "gemini-3.6-flash"
-_TRANSIENT_FALLBACK_ERRORS = frozenset({"service_unavailable", "request_timeout"})
+_FALLBACK_ERRORS = frozenset(
+    {
+        "service_unavailable",
+        "request_timeout",
+        "rate_limited",
+        "daily_quota_exhausted",
+    }
+)
 _FALLBACK_TO_PREFIX = "fallback_to:"
 _ATTEMPT_MODEL_PREFIX = "model:"
 
@@ -37,7 +44,7 @@ def _fallback_allowed(config: Any, result: Any) -> bool:
         _normalized_model(getattr(config, "model", "")) == PROTECTED_TOPIC_ANGLE_MODEL
         and not bool(getattr(result, "enrichments", None))
         and str(getattr(result, "error_type", "") or "").strip().casefold()
-        in _TRANSIENT_FALLBACK_ERRORS
+        in _FALLBACK_ERRORS
     )
 
 
@@ -63,12 +70,12 @@ def _has_fallback_metadata(result: Any) -> bool:
 def install_topic_angle_model_fallback_contract() -> None:
     """Protect Gemini 3.7 Flash RPD for topic-angle generation.
 
-    Gemini 3.7 Flash gets exactly one provider attempt per prepared batch. Only a
-    transient service/timeout failure may fall back once to Gemini 3.6 Flash. 400,
-    authentication, permission, model, quota and validation errors are surfaced as-is.
-    A successful-but-partial 3.7 response is preserved without an automatic 3.7
-    recovery request; missing IDs remain pending for a later run. Other models retain
-    the existing retry and partial-recovery policies.
+    Gemini 3.7 Flash gets exactly one provider attempt per prepared batch. Service
+    unavailability, timeout, rate-limit, or daily-quota failure may fall back once to
+    Gemini 3.6 Flash. 400, authentication, permission, model and validation errors are
+    surfaced as-is. A successful-but-partial 3.7 response is preserved without an
+    automatic 3.7 recovery request; missing IDs remain pending for a later run. Other
+    models retain the existing retry and partial-recovery policies.
     """
     from src.services import topic_angle_ai_service as ai_module
     from src.services import topic_angle_partial_recovery_runtime as recovery_module
