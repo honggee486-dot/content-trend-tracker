@@ -111,6 +111,9 @@ if "streamlit" in sys.modules:
     install_cluster_progress_detail_contract(_clustering_job_module)
 
     import src.ui as _ui_module
+    from src.services.content_pack_request_layout_runtime import (
+        install_content_pack_request_layout_runtime,
+    )
     from src.trend_candidate_blog_recommendation_ui import (
         install_trend_candidate_blog_recommendation_ui,
     )
@@ -118,6 +121,8 @@ if "streamlit" in sys.modules:
         install_trend_blog_recommendation_ui_runtime,
     )
 
+    # AI 요청서 본문 폭과 ChatGPT 수동 전달 버튼의 배치를 현재 실사용 화면에 맞춥니다.
+    install_content_pack_request_layout_runtime(_ui_module)
     install_clustering_settings_ui_contract(_ui_module)
     install_trend_candidate_blog_recommendation_ui(_ui_module)
     install_trend_blog_recommendation_ui_runtime(st_module=sys.modules["streamlit"])

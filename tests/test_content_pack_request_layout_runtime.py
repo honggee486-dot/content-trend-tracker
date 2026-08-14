@@ -1,0 +1,115 @@
+from types import SimpleNamespace
+
+from src.services.content_pack_request_layout_runtime import (
+    ContentPackRequestLayoutProxy,
+    install_content_pack_request_layout_runtime,
+)
+
+
+class _FakeComponents:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int]] = []
+
+    def html(self, body: str, *, height: int) -> None:
+        self.calls.append((body, height))
+
+
+class _FakeColumn:
+    def __init__(self) -> None:
+        self.button_calls: list[tuple[object, dict[str, object]]] = []
+        self.markdown_calls: list[str] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def button(self, label, *args, **kwargs):
+        self.button_calls.append((label, dict(kwargs)))
+        return True
+
+    def markdown(self, body, *args, **kwargs):
+        self.markdown_calls.append(str(body))
+
+
+class _FakeStreamlit:
+    def __init__(self) -> None:
+        self.columns_calls: list[tuple[object, dict[str, object]]] = []
+        self.text_area_calls: list[tuple[object, dict[str, object]]] = []
+        self.outer_columns = [_FakeColumn(), _FakeColumn()]
+
+    def columns(self, spec, *args, **kwargs):
+        self.columns_calls.append((spec, dict(kwargs)))
+        return self.outer_columns
+
+    def text_area(self, label, *args, **kwargs):
+        self.text_area_calls.append((label, dict(kwargs)))
+        return "prompt"
+
+
+def test_request_layout_uses_wide_prompt_and_stacked_actions() -> None:
+    fake = _FakeStreamlit()
+    proxy = ContentPackRequestLayoutProxy(fake)
+
+    assert (
+        proxy.text_area(
+            "ChatGPT 또는 Gemini에 그대로 붙여넣기",
+            value="request",
+            height=520,
+        )
+        == "prompt"
+    )
+    assert fake.columns_calls == [
+        (
+            [2.75, 1.0],
+            {"gap": "medium", "vertical_alignment": "top"},
+        )
+    ]
+
+    actions = proxy.columns([1, 1])
+    assert actions[0] is fake.outer_columns[1]
+
+    result_block = actions[1]
+    assert result_block.button(
+        "ChatGPT 결과 붙여넣기로 이동",
+        type="primary",
+        width="stretch",
+    )
+    assert fake.outer_columns[1].button_calls == [
+        (
+            "ChatGPT 결과 붙여넣기로 이동",
+            {
+                "type": "primary",
+                "width": "stretch",
+                "key": "content_pack_result_handoff",
+            },
+        )
+    ]
+    css = "\n".join(fake.outer_columns[1].markdown_calls)
+    assert "min-height: 54px" in css
+    assert "margin-top: 0.35rem" in css
+
+
+def test_chatgpt_button_matches_primary_scale_and_has_hover_feedback() -> None:
+    components = _FakeComponents()
+    ui_module = SimpleNamespace(
+        _component_token=lambda key: "token",
+        components=components,
+        _ContentPackRequestLayoutProxy=object,
+        render_chatgpt_request_button=lambda *args, **kwargs: None,
+    )
+
+    install_content_pack_request_layout_runtime(ui_module)
+
+    assert ui_module._ContentPackRequestLayoutProxy is ContentPackRequestLayoutProxy
+    ui_module.render_chatgpt_request_button("request", key="request-key")
+
+    assert len(components.calls) == 1
+    body, height = components.calls[0]
+    assert height == 84
+    assert "min-height:54px" in body
+    assert "#chatgpt-button-token:hover" in body
+    assert "background:#6ea8fe" in body
+    assert 'href="https://chatgpt.com/"' in body
+    assert "navigator.clipboard.writeText(text)" in body
