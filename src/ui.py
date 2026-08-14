@@ -72,6 +72,7 @@ _CANDIDATE_ANGLE_STATUS_CSS = """
 _LEGACY_GEMINI_CAPACITY_SENTENCE = "기본 구성은 100개를 1회 요청으로 처리합니다."
 _CURRENT_GEMINI_CAPACITY_SENTENCE = "현재 설정값 기준으로 위 버튼 1회 최대치가 적용됩니다."
 _VERSION_CAPTION_PREFIX = "현재 버전:"
+_CONTENT_PACK_PROMPT_LABEL = "ChatGPT 또는 Gemini에 그대로 붙여넣기"
 _FIXED_CLUSTERING_NUMBER_INPUTS = {
     "Gemini 요청 1회당 1차 군집": {
         "value": 300,
@@ -158,6 +159,49 @@ class _StreamlitInlineVersionProxy:
         if str(value or "").strip().startswith(_VERSION_CAPTION_PREFIX):
             return None
         return self._target.caption(value, *args, **kwargs)
+
+
+class _ContentPackRequestLayoutProxy:
+    """Render the generated AI request at half width with compact actions beside it."""
+
+    def __init__(self, target) -> None:
+        self._target = target
+        self._request_action_parent = None
+
+    def __getattr__(self, name: str):
+        return getattr(self._target, name)
+
+    def text_area(self, label: object, *args, **kwargs):
+        if str(label or "") != _CONTENT_PACK_PROMPT_LABEL:
+            return self._target.text_area(label, *args, **kwargs)
+
+        layout_cols = self._target.columns(
+            [1.0, 1.0],
+            gap="medium",
+            vertical_alignment="top",
+        )
+        with layout_cols[0]:
+            result = self._target.text_area(label, *args, **kwargs)
+        self._request_action_parent = layout_cols[1]
+        return result
+
+    def columns(self, spec, *args, **kwargs):
+        is_request_action_row = (
+            self._request_action_parent is not None
+            and isinstance(spec, (list, tuple))
+            and tuple(spec) == (1, 1)
+        )
+        if not is_request_action_row:
+            return self._target.columns(spec, *args, **kwargs)
+
+        action_parent = self._request_action_parent
+        self._request_action_parent = None
+        with action_parent:
+            return self._target.columns(
+                [0.9, 1.1],
+                gap="small",
+                vertical_alignment="top",
+            )
 
 
 def _install_inline_version_caption_ui(caller_globals: dict[str, object]) -> None:
@@ -388,10 +432,16 @@ def _install_content_pack_history_ui(caller_globals: dict[str, object]) -> None:
             caller_globals["get_topic_content_defaults"] = reused_get_defaults
             caller_globals["save_content_pack"] = tracked_save_content_pack
 
+        original_streamlit = caller_globals.get("st")
+        if original_streamlit is not None:
+            caller_globals["st"] = _ContentPackRequestLayoutProxy(original_streamlit)
+
         render_active_content_pack_reuse_notice(st_module=st)
         try:
             result = target(*args, **kwargs)
         finally:
+            if original_streamlit is not None:
+                caller_globals["st"] = original_streamlit
             if payload is not None:
                 caller_globals["get_topic_content_defaults"] = original_get_defaults
                 caller_globals["save_content_pack"] = original_save_content_pack

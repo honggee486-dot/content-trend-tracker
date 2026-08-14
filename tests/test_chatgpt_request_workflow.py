@@ -27,6 +27,18 @@ def test_ai_request_screen_uses_manual_chatgpt_result_handoff() -> None:
     assert '"AI 결과 가져오기"' in handoff_section
 
 
+def test_ai_request_screen_uses_half_width_prompt_and_compact_action_columns() -> None:
+    source = (PROJECT_ROOT / "src" / "ui.py").read_text(encoding="utf-8")
+
+    assert '"ChatGPT 또는 Gemini에 그대로 붙여넣기"' in source
+    assert "class _ContentPackRequestLayoutProxy:" in source
+    assert "[1.0, 1.0]" in source
+    assert "[0.9, 1.1]" in source
+    assert 'gap="medium"' in source
+    assert 'gap="small"' in source
+    assert "caller_globals[\"st\"] = _ContentPackRequestLayoutProxy(original_streamlit)" in source
+
+
 def test_copy_component_uses_safe_dom_token_for_uuid_keys() -> None:
     source = (PROJECT_ROOT / "src" / "ui.py").read_text(encoding="utf-8")
 
