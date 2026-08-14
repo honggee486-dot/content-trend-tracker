@@ -37,6 +37,7 @@ class _FakeStreamlit:
     def __init__(self) -> None:
         self.columns_calls: list[tuple[object, dict[str, object]]] = []
         self.text_area_calls: list[tuple[object, dict[str, object]]] = []
+        self.radio_calls: list[tuple[object, list[object], dict[str, object]]] = []
         self.outer_columns = [_FakeColumn(), _FakeColumn()]
 
     def columns(self, spec, *args, **kwargs):
@@ -46,6 +47,55 @@ class _FakeStreamlit:
     def text_area(self, label, *args, **kwargs):
         self.text_area_calls.append((label, dict(kwargs)))
         return "prompt"
+
+    def radio(self, label, options, *args, **kwargs):
+        option_values = list(options)
+        self.radio_calls.append((label, option_values, dict(kwargs)))
+        index = int(kwargs.get("index", 0))
+        return option_values[index]
+
+
+def test_saved_topic_is_primary_when_available() -> None:
+    fake = _FakeStreamlit()
+    proxy = ContentPackRequestLayoutProxy(fake)
+
+    selected = proxy.radio(
+        "시작 방법",
+        ["새 글감 바로 입력", "저장된 주제 사용"],
+        index=1,
+        horizontal=True,
+        help="legacy help",
+    )
+
+    assert selected == "저장된 주제 사용"
+    assert fake.radio_calls == [
+        (
+            "시작 방법",
+            ["저장된 주제 사용", "새 글감 바로 입력"],
+            {
+                "index": 0,
+                "horizontal": True,
+                "help": (
+                    "저장된 관심 주제가 있으면 이를 기본으로 사용합니다. "
+                    "새 글감 바로 입력은 저장된 주제로 시작할 수 없을 때 사용하는 보조 흐름입니다."
+                ),
+            },
+        )
+    ]
+
+
+def test_quick_topic_remains_available_when_no_saved_topic_exists() -> None:
+    fake = _FakeStreamlit()
+    proxy = ContentPackRequestLayoutProxy(fake)
+
+    selected = proxy.radio(
+        "시작 방법",
+        ["새 글감 바로 입력"],
+        index=0,
+    )
+
+    assert selected == "새 글감 바로 입력"
+    assert fake.radio_calls[0][1] == ["새 글감 바로 입력"]
 
 
 def test_request_layout_uses_wide_prompt_and_stacked_actions() -> None:
