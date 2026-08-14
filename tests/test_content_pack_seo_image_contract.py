@@ -118,7 +118,9 @@ def test_prompt_requires_people_first_seo_and_double_checked_free_images() -> No
     assert "[SEO 필수 규칙]" in prompt
     assert "Google·NAVER" in prompt
     assert "키워드 반복" in prompt
-    assert "상투적인 AI 문구" in prompt
+    assert "저품질 글의 특징" in prompt
+    assert "사람이 직접 작성·편집한 글처럼" in prompt
+    assert "블로그로 인식" not in prompt
     assert "free_image" in prompt
     assert "개별 자산 페이지" in prompt
     assert "별도 공식 라이선스" in prompt
