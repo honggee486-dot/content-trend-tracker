@@ -210,3 +210,38 @@ def test_schema_20_remains_backward_compatible() -> None:
     assert result.is_valid
     assert result.data is not None
     assert result.data["schema_version"] == "2.0"
+
+
+def test_schema_21_strips_chatgpt_content_reference_markers_but_keeps_raw_json() -> None:
+    payload = _result()
+    marker = ":contentReference[oaicite:12]{index=12}"
+    payload["summary"] = f"요약 문장.{marker}"
+    payload["seo"]["meta_description"] = f"검색 설명.{marker}"
+    payload["blocks"][0]["text"] = f"{payload['blocks'][0]['text']} {marker}"
+    payload["blocks"].append(
+        {
+            "type": "bullet_list",
+            "items": [f"정책 기준 확인{marker}", "일반 항목"],
+        }
+    )
+    payload["fact_checks"] = [
+        {
+            "claim": f"정책 기준 주장{marker}",
+            "status": "needs_verification",
+            "reason": f"공식 자료 확인 필요{marker}",
+            "source_ids": [],
+        }
+    ]
+    raw = json.dumps(payload, ensure_ascii=False)
+
+    result = parse_ai_result(raw)
+
+    assert result.is_valid
+    assert result.data is not None
+    assert "contentReference" in result.json_text
+    assert result.json_text == raw
+    assert "contentReference" not in json.dumps(result.data, ensure_ascii=False)
+    assert "contentReference" not in result.data["body_markdown"]
+    assert result.data["summary"] == "요약 문장."
+    assert result.data["seo"]["meta_description"] == "검색 설명."
+    assert result.data["fact_checks"][0]["reason"] == "공식 자료 확인 필요"

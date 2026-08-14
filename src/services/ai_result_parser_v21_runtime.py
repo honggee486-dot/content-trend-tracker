@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -29,6 +30,24 @@ FREE_IMAGE_REQUIRED_BOOL_FIELDS = (
     "editorial_only",
 )
 FREE_IMAGE_STATUSES = {"verified_free", "not_found"}
+CHATGPT_CONTENT_REFERENCE_PATTERN = re.compile(
+    r"[ \t]*:contentReference\[oaicite:\d+\]\{index=\d+\}",
+    re.IGNORECASE,
+)
+
+
+def _strip_chatgpt_content_references(value: Any) -> Any:
+    """Remove ChatGPT UI-only citation tokens from parsed display content."""
+    if isinstance(value, str):
+        return CHATGPT_CONTENT_REFERENCE_PATTERN.sub("", value)
+    if isinstance(value, list):
+        return [_strip_chatgpt_content_references(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _strip_chatgpt_content_references(item)
+            for key, item in value.items()
+        }
+    return value
 
 
 def _validate_seo(parser_module, value: Any, errors: list[str], warnings: list[str]) -> dict[str, Any]:
@@ -227,6 +246,7 @@ def install_ai_result_parser_v21_contract() -> None:
         if not isinstance(loaded, dict) or str(loaded.get("schema_version") or "").strip() != "2.1":
             return original_parse(raw_response)
 
+        loaded = _strip_chatgpt_content_references(loaded)
         errors: list[str] = []
         warnings: list[str] = []
         normalized_seo = _validate_seo(
