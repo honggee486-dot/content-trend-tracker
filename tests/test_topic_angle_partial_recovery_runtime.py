@@ -353,3 +353,34 @@ def test_fallback_attempt_logging_uses_actual_models(monkeypatch) -> None:
         (PROTECTED_TOPIC_ANGLE_MODEL, 1, "fallback"),
         (TOPIC_ANGLE_FALLBACK_MODEL, 2, "success_after_fallback"),
     ]
+
+
+def test_gemini_37_partial_response_does_not_issue_recovery_request() -> None:
+    clusters = (_cluster("trend_a"), _cluster("trend_b"))
+    execution = _execution(
+        _result(
+            batch_number=1,
+            clusters=clusters,
+            returned_ids=("trend_a",),
+        )
+    )
+    calls = 0
+
+    def forbidden_runner(**kwargs):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("Gemini 3.7 부분 응답은 자동 보강 요청하면 안 됩니다.")
+
+    recovered = recover_partial_topic_angle_execution(
+        execution,
+        config=replace(_config(), model=PROTECTED_TOPIC_ANGLE_MODEL),
+        sleep_func=lambda _: None,
+        batch_request_runner=forbidden_runner,
+    )
+    annotated = annotate_missing_topic_angle_ids(recovered)
+
+    assert recovered is execution
+    assert calls == 0
+    assert set(recovered.results[0].enrichments) == {"trend_a"}
+    assert annotated.results[0].error_type == "response_partial"
+    assert "trend_b" in annotated.results[0].error_message

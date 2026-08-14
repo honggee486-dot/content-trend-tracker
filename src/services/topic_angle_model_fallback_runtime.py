@@ -66,14 +66,25 @@ def install_topic_angle_model_fallback_contract() -> None:
     Gemini 3.7 Flash gets exactly one provider attempt per prepared batch. Only a
     transient service/timeout failure may fall back once to Gemini 3.6 Flash. 400,
     authentication, permission, model, quota and validation errors are surfaced as-is.
-    Other models retain the existing retry policy.
+    A successful-but-partial 3.7 response is preserved without an automatic 3.7
+    recovery request; missing IDs remain pending for a later run. Other models retain
+    the existing retry and partial-recovery policies.
     """
     from src.services import topic_angle_ai_service as ai_module
+    from src.services import topic_angle_partial_recovery_runtime as recovery_module
 
     original_execute = getattr(ai_module, "_execute_batch_request", None)
     original_record = getattr(ai_module, "_record_batch_attempts", None)
     original_save = getattr(ai_module, "_save_batch_enrichments", None)
-    if not all(callable(item) for item in (original_execute, original_record, original_save)):
+    original_recover = getattr(
+        recovery_module,
+        "recover_partial_topic_angle_execution",
+        None,
+    )
+    if not all(
+        callable(item)
+        for item in (original_execute, original_record, original_save, original_recover)
+    ):
         return
     if getattr(original_execute, "_topic_angle_model_fallback_contract", False):
         return
@@ -143,10 +154,13 @@ def install_topic_angle_model_fallback_contract() -> None:
                     status=(
                         "success_after_fallback"
                         if bool(getattr(fallback, "enrichments", None))
-                        and str(getattr(attempt, "status", "")) in {"success", "success_after_retry"}
+                        and str(getattr(attempt, "status", ""))
+                        in {"success", "success_after_retry"}
                         else getattr(attempt, "status", "")
                     ),
-                    retry_reason="|".join(value for value in (reason, model_marker) if value),
+                    retry_reason="|".join(
+                        value for value in (reason, model_marker) if value
+                    ),
                 )
             )
 
@@ -194,9 +208,17 @@ def install_topic_angle_model_fallback_contract() -> None:
         actual_config = replace(config, model=actual_model)
         return original_save(con, config=actual_config, result=result)
 
+    @wraps(original_recover)
+    def protected_recover(execution, *, config, **kwargs):
+        if _normalized_model(getattr(config, "model", "")) == PROTECTED_TOPIC_ANGLE_MODEL:
+            return execution
+        return original_recover(execution, config=config, **kwargs)
+
     protected_execute._topic_angle_model_fallback_contract = True  # type: ignore[attr-defined]
     protected_record._topic_angle_model_fallback_contract = True  # type: ignore[attr-defined]
     protected_save._topic_angle_model_fallback_contract = True  # type: ignore[attr-defined]
+    protected_recover._topic_angle_model_fallback_contract = True  # type: ignore[attr-defined]
     ai_module._execute_batch_request = protected_execute
     ai_module._record_batch_attempts = protected_record
     ai_module._save_batch_enrichments = protected_save
+    recovery_module.recover_partial_topic_angle_execution = protected_recover
