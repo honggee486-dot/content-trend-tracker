@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import time
 from dataclasses import replace
+from queue import Queue
 
 from src.config import GeminiConfig
 from src.services import topic_angle_ai_service
+from src.services.gemini_service import GeminiHttpError, _ApiErrorInfo
+from src.services.topic_angle_model_fallback_runtime import (
+    PROTECTED_TOPIC_ANGLE_MODEL,
+    TOPIC_ANGLE_FALLBACK_MODEL,
+)
 from src.services.topic_angle_partial_recovery_runtime import (
     TopicAngleRecoveryExecution,
     recover_partial_topic_angle_execution,
@@ -94,6 +100,43 @@ def _execution(result):
         started_at=time.perf_counter(),
     )
     return topic_angle_ai_service.TopicAngleExecution(preparation, (result,))
+
+
+def _run_protected_batch(monkeypatch, *, fallback_fails: bool = False):
+    calls: list[str] = []
+
+    def fake_call(config, request_text, request_hash, **kwargs):
+        calls.append(config.model)
+        if config.model == PROTECTED_TOPIC_ANGLE_MODEL or fallback_fails:
+            raise GeminiHttpError(
+                _ApiErrorInfo(
+                    http_status=503,
+                    error_type="service_unavailable",
+                    message="temporary outage",
+                    retryable=True,
+                    retry_delay_seconds=0,
+                )
+            )
+        return "{}", 10, 20, 30
+
+    monkeypatch.setattr(topic_angle_ai_service, "call_gemini_structured_output", fake_call)
+    monkeypatch.setattr(
+        topic_angle_ai_service,
+        "_validated_enrichments",
+        lambda raw_response, requested_clusters: (
+            {cluster_id: {"display_title": cluster_id} for cluster_id in requested_clusters},
+            [],
+        ),
+    )
+    result = topic_angle_ai_service._execute_batch_request(
+        batch_number=1,
+        clusters=[_cluster("trend_a")],
+        start_delay_seconds=0,
+        config=replace(_config(), model=PROTECTED_TOPIC_ANGLE_MODEL),
+        event_queue=Queue(),
+        sleep_func=lambda _: None,
+    )
+    return result, calls
 
 
 def test_partial_response_recovers_only_missing_ids() -> None:
@@ -232,3 +275,81 @@ def test_installed_finalizer_logs_recovery_with_actual_subset_size(monkeypatch) 
     assert result.status == "success_after_retry"
     assert result.attempts == 2
     assert result.generated_clusters == 2
+
+
+def test_gemini_37_transient_failure_uses_36_once_without_37_retry(monkeypatch) -> None:
+    result, calls = _run_protected_batch(monkeypatch)
+
+    assert calls == [PROTECTED_TOPIC_ANGLE_MODEL, TOPIC_ANGLE_FALLBACK_MODEL]
+    assert result.status == "success_after_fallback"
+    assert len(result.attempts) == 2
+    assert result.attempts[0].status == "fallback"
+    assert result.attempts[0].retry_reason == f"fallback_to:{TOPIC_ANGLE_FALLBACK_MODEL}"
+    assert result.attempts[1].attempt_number == 2
+    assert f"model:{TOPIC_ANGLE_FALLBACK_MODEL}" in result.attempts[1].retry_reason
+
+
+def test_gemini_37_non_transient_failure_does_not_fallback(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def fake_call(config, request_text, request_hash, **kwargs):
+        calls.append(config.model)
+        raise GeminiHttpError(
+            _ApiErrorInfo(
+                http_status=400,
+                error_type="invalid_request",
+                message="bad request",
+                retryable=False,
+                retry_delay_seconds=None,
+            )
+        )
+
+    monkeypatch.setattr(topic_angle_ai_service, "call_gemini_structured_output", fake_call)
+    result = topic_angle_ai_service._execute_batch_request(
+        batch_number=1,
+        clusters=[_cluster("trend_a")],
+        start_delay_seconds=0,
+        config=replace(_config(), model=PROTECTED_TOPIC_ANGLE_MODEL),
+        event_queue=Queue(),
+        sleep_func=lambda _: None,
+    )
+
+    assert calls == [PROTECTED_TOPIC_ANGLE_MODEL]
+    assert result.status == "invalid_request"
+    assert len(result.attempts) == 1
+
+
+def test_gemini_37_and_36_transient_failures_stop_after_two_provider_calls(monkeypatch) -> None:
+    result, calls = _run_protected_batch(monkeypatch, fallback_fails=True)
+
+    assert calls == [PROTECTED_TOPIC_ANGLE_MODEL, TOPIC_ANGLE_FALLBACK_MODEL]
+    assert result.status == "service_unavailable"
+    assert len(result.attempts) == 2
+    assert result.attempts[-1].attempt_number == 2
+
+
+def test_fallback_attempt_logging_uses_actual_models(monkeypatch) -> None:
+    result, calls = _run_protected_batch(monkeypatch)
+    logged: list[tuple[str, int, str]] = []
+
+    def fake_record(con, **kwargs):
+        logged.append(
+            (
+                kwargs["config"].model,
+                int(kwargs["attempt_number"]),
+                str(kwargs["status"]),
+            )
+        )
+
+    monkeypatch.setattr(topic_angle_ai_service, "record_gemini_api_call", fake_record)
+    topic_angle_ai_service._record_batch_attempts(
+        object(),
+        config=replace(_config(), model=PROTECTED_TOPIC_ANGLE_MODEL),
+        result=result,
+    )
+
+    assert calls == [PROTECTED_TOPIC_ANGLE_MODEL, TOPIC_ANGLE_FALLBACK_MODEL]
+    assert logged == [
+        (PROTECTED_TOPIC_ANGLE_MODEL, 1, "fallback"),
+        (TOPIC_ANGLE_FALLBACK_MODEL, 2, "success_after_fallback"),
+    ]

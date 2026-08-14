@@ -13,6 +13,9 @@ from src.services.content_pack_freshness_review_runtime import (
 from src.services.portal_full_window_analysis_runtime import (
     install_portal_full_window_analysis_contract,
 )
+from src.services.topic_angle_model_fallback_runtime import (
+    install_topic_angle_model_fallback_contract,
+)
 from src.services.topic_angle_partial_recovery_runtime import (
     install_topic_angle_partial_recovery_contract,
 )
@@ -37,11 +40,14 @@ from src.services.trend_source_visibility_policy_diagnostic_runtime import (
 # 기존 저장 결과의 1.0·2.0 파싱 호환성은 그대로 유지합니다.
 install_ai_result_parser_v21_contract()
 # 모든 새 AI 요청서는 실제 답변 시점의 현재 날짜와 최신 웹 검색을 기준으로 삼고,
-# 초안 작성 뒤 두 번의 추가 웹 재검증을 끝낸 뒤에만 최종 JSON을 출력합니다.
+# 초안 작성 뒤 세 번의 추가 웹 재검증을 끝낸 뒤에만 최종 JSON을 출력합니다.
 install_content_pack_freshness_review_contract()
 # 앱·예약 수집·진단이 같은 분석 범위를 사용하도록 Streamlit 여부와 무관하게
 # NAVER·Daum 최근 분석 시간 범위 전체 계약을 먼저 설치합니다.
 install_portal_full_window_analysis_contract()
+# Gemini 3.7 Flash 주제 방향은 같은 요청을 자동 재시도하지 않고, 일시적 서비스
+# 오류·타임아웃일 때만 Gemini 3.6 Flash로 한 번 fallback해 무료 RPD를 보호합니다.
+install_topic_angle_model_fallback_contract()
 # 강한 YouTube·Google Trends·위키 신호는 모든 실행 경로에서 같은 기준으로
 # 추천이 아닌 검토 후보까지만 승격합니다. 사실 근거 안전장치는 그대로 유지합니다.
 install_trend_source_review_contract()
