@@ -156,6 +156,34 @@ def _load_ai_profile_contexts(
     return result
 
 
+def _load_saved_ai_route_codes(
+    con: duckdb.DuckDBPyConnection,
+    cluster_ids: Sequence[str],
+) -> dict[str, str]:
+    normalized_ids = list(dict.fromkeys(str(value or "").strip() for value in cluster_ids))
+    normalized_ids = [value for value in normalized_ids if value]
+    if not normalized_ids:
+        return {}
+    try:
+        placeholders = ", ".join("?" for _ in normalized_ids)
+        rows = con.execute(
+            f"""
+            SELECT cluster_id, strategy_code
+            FROM trend_blog_ai_routes
+            WHERE cluster_id IN ({placeholders})
+            """,
+            normalized_ids,
+        ).fetchall()
+    except Exception:
+        # 기존 DB나 API 분류 전 화면에서는 예전 로컬 추천을 그대로 유지합니다.
+        return {}
+    return {
+        str(cluster_id): str(strategy_code or "").strip()
+        for cluster_id, strategy_code in rows
+        if str(cluster_id or "").strip()
+    }
+
+
 def _recommendation_input(
     row: Mapping[str, Any],
     ai_context: Mapping[str, str] | None,
@@ -178,9 +206,10 @@ def build_trend_blog_recommendation_labels(
 ) -> dict[str, str]:
     """Build a display-only blog hint for visible trend candidates.
 
-    Existing AI direction/profile text is reused when available; no external API is
-    called. A saved recommendation name overrides the current blog profile name.
-    When neither name exists the label is intentionally just ``B:``, ``N:`` or ``T:``.
+    A saved Gemini semantic route is preferred when available. The display path never
+    calls an external API; before the first API routing run or after a failed batch it
+    falls back to the existing local keyword/category scorer. A saved recommendation
+    name still overrides the current blog profile name.
     """
     visible_rows = [dict(row) for row in rows]
     if not visible_rows:
@@ -193,6 +222,7 @@ def build_trend_blog_recommendation_labels(
 
     cluster_ids = [str(row.get("cluster_id") or "") for row in visible_rows]
     ai_contexts = _load_ai_profile_contexts(con, cluster_ids)
+    saved_ai_routes = _load_saved_ai_route_codes(con, cluster_ids)
     strategy_by_code = {
         str(item.get("strategy_code") or ""): item for item in effective_strategies
     }
@@ -207,6 +237,17 @@ def build_trend_blog_recommendation_labels(
         cluster_id = str(row.get("cluster_id") or "").strip()
         if not cluster_id:
             continue
+
+        saved_strategy_code = saved_ai_routes.get(cluster_id, "")
+        if saved_strategy_code in strategy_by_code:
+            strategy = strategy_by_code[saved_strategy_code]
+            platform = str(strategy.get("platform") or "")
+            result[cluster_id] = format_recommended_blog_label(
+                platform,
+                display_names.get(saved_strategy_code, ""),
+            )
+            continue
+
         recommendation: BlogChannelRecommendation | None = recommend_blog_channel(
             _recommendation_input(row, ai_contexts.get(cluster_id)),
             effective_strategies,
