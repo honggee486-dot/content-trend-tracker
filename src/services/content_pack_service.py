@@ -14,15 +14,15 @@ from src.services.topic_service import add_manual_topic, get_topic, get_topic_so
 DEFAULT_TITLE_RULES = [
     "본문에 없는 내용을 제목에 넣지 않는다.",
     "과장·공포·확정 표현을 사용하지 않는다.",
-    "검색 의도가 분명하게 드러나는 한국어 제목 하나만 출력한다.",
+    "검색 의도가 분명하게 드러나는 정확하고 고유한 한국어 제목 하나만 출력한다.",
 ]
 
 DEFAULT_OUTLINE = [
-    "도입: 독자가 이 주제를 찾아본 이유를 짧게 짚는다.",
-    "핵심 설명: 가장 중요한 내용을 먼저 설명한다.",
-    "세부 정보: 근거와 예시를 구분해 정리한다.",
+    "도입: 독자가 이 주제를 찾아본 이유와 핵심 질문을 짧게 짚는다.",
+    "핵심 설명: 검색 의도에 가장 직접적인 답을 먼저 설명한다.",
+    "세부 정보: 근거와 예시를 구분해 구체적으로 정리한다.",
     "주의사항: 오해하기 쉬운 점과 사실 확인이 필요한 부분을 밝힌다.",
-    "정리: 핵심 내용을 반복하지 않고 실용적으로 마무리한다.",
+    "정리: 핵심을 기계적으로 반복하지 않고 독자가 다음 행동을 판단할 수 있게 마무리한다.",
 ]
 
 DEFAULT_FORBIDDEN = ["무조건", "100%", "확실히", "반드시 성공", "전문가가 보장"]
@@ -132,12 +132,19 @@ def assess_content_pack_readiness(
         ),
     }
 
+
 OUTPUT_SCHEMA_EXAMPLE = {
-    "schema_version": "2.0",
-    "title": "글 제목",
+    "schema_version": "2.1",
+    "title": "검색 의도와 본문을 정확히 반영한 글 제목",
     "summary": "두세 문장 요약",
     "category": "카테고리",
     "tags": ["태그1", "태그2"],
+    "seo": {
+        "primary_keyword": "대표 검색어",
+        "secondary_keywords": ["연관 검색어1", "연관 검색어2"],
+        "search_intent": "독자가 이 검색어로 해결하려는 질문 또는 목적",
+        "meta_description": "검색 결과에서 내용을 정확히 설명하는 자연스러운 요약문",
+    },
     "blocks": [
         {
             "type": "paragraph",
@@ -156,10 +163,26 @@ OUTPUT_SCHEMA_EXAMPLE = {
             "type": "image",
             "position": "첫 번째 핵심 내용 뒤",
             "purpose": "본문 이해를 돕는 설명 이미지",
-            "prompt": "이미지 생성 프롬프트",
+            "free_image": {
+                "status": "verified_free",
+                "search_query": "무료 이미지 검색에 사용할 구체적인 검색어",
+                "page_url": "https://example.com/specific-free-asset-page",
+                "provider": "이미지 제공 사이트",
+                "creator": "제작자 또는 촬영자",
+                "license_name": "확인된 무료 이용 라이선스 또는 이용 조건명",
+                "license_url": "https://example.com/official-license-terms",
+                "attribution": "필요한 경우 표시할 출처 문구, 불필요하면 빈 문자열",
+                "checked_at": "YYYY-MM-DD",
+                "commercial_use_allowed": True,
+                "payment_required": False,
+                "premium_or_subscription_required": False,
+                "editorial_only": False,
+                "verification_note": "개별 자산 페이지와 별도 공식 라이선스 페이지를 각각 확인한 근거",
+            },
+            "prompt": "무료 이미지가 없거나 사용하지 않을 때 바로 사용할 이미지 생성 프롬프트",
             "aspect_ratio": "16:9",
             "caption": "이미지 아래에 표시할 캡션",
-            "alt_text": "이미지를 볼 수 없을 때 전달할 대체 설명",
+            "alt_text": "이미지를 볼 수 없을 때도 내용을 이해할 수 있는 자연스러운 대체 설명",
         },
         {
             "type": "quote",
@@ -719,6 +742,22 @@ def build_content_pack(
 - 사용자가 추가한 참고 자료가 있으면 웹 검색 결과와 함께 교차 확인한다.
 - 시점 의존 주제는 현재값을 확인한 뒤 작성하며 `보는 법`, `해석 방법` 같은 일반론으로 바꾸지 않는다.
 
+## 검색 최적화·콘텐츠 품질 원칙
+- Google·NAVER 등 검색 포털에서 독자가 실제로 입력할 검색어와 검색 의도를 먼저 파악한다.
+- 대표 검색어와 연관 검색어는 제목·도입·관련 소제목·본문·alt text에 문맥상 필요한 만큼만 자연스럽게 사용한다.
+- 같은 검색어를 반복하거나 검색 순위를 조작하기 위한 키워드 나열·문구 변형·낚시성 제목은 사용하지 않는다.
+- 다른 자료를 단순 복사·짜깁기·재서술하지 않고 여러 근거를 비교·정리해 이 글만의 설명 가치가 남게 한다.
+- 상투적인 도입, 반복적인 문장 패턴, 불필요한 요약 반복과 빈말 등 저품질 글의 특징을 피하고, 사람이 직접 작성·편집한 글처럼 자연스럽고 맥락에 맞는 한국어 품질을 유지한다.
+- 직접 해보지 않은 경험이나 존재하지 않는 전문성·후기·사례를 꾸며내지 않는다.
+- SEO보다 사실 정확성과 독자 만족을 우선하되, 정확한 제목·설명·구조·이미지 대체텍스트 등 검색엔진이 내용을 이해하기 좋은 형태를 갖춘다.
+
+## 이미지 사용 원칙
+- 본문 이해에 실제 도움이 되는 위치만 선정하고 이미지 개수를 억지로 채우지 않는다.
+- 각 위치에서 먼저 상업적 블로그에 비용 없이 사용할 수 있는 무료 이미지를 찾는다.
+- 무료 판정은 `개별 자산 페이지`와 `별도의 공식 라이선스·이용약관 페이지` 두 곳을 모두 확인해야 한다.
+- Premium·Pro·유료 다운로드·구독·크레딧·워터마크 미리보기·editorial-only·라이선스 불명확·재배포 사이트 이미지는 무료 후보에서 제외한다.
+- 두 확인 중 하나라도 불명확하면 무료로 판정하지 않고 이미지 생성 프롬프트를 fallback으로 사용한다.
+
 ## 제목 규칙
 {chr(10).join(f'- {item}' for item in title_rule_list)}
 
@@ -778,8 +817,8 @@ def build_ai_prompt(
 - 사용자의 의도를 `보는 법`, `해석 방법`, `일반적인 주의점`으로 바꾸지 않습니다.
 - 검색으로 확인되지 않은 현재값은 추정하지 않고 fact_checks에 남깁니다.
 """
-    return f"""당신은 사실 확인을 우선하는 한국어 정보성 블로그 작성자입니다.
-아래 자료팩을 사용해 완성도 높은 초안을 작성하세요.
+    return f"""당신은 사실 확인과 사람 중심의 검색 품질을 우선하는 한국어 콘텐츠 편집자입니다.
+아래 자료팩을 사용해 Google·NAVER 등 검색 포털에서도 이해하기 쉽고 실제 독자에게 도움이 되는 완성도 높은 초안을 작성하세요.
 이 요청은 Gemini와 ChatGPT에서 공통으로 사용할 수 있습니다.
 
 [중요 원칙]
@@ -791,7 +830,33 @@ def build_ai_prompt(
 6. 사용자가 추가한 사실 참고 자료가 있으면 웹 검색 결과와 함께 교차 확인합니다.
 7. 광고성 과장, 단정, 공포 조장, 근거 없는 비교를 피합니다.
 8. 목표 분량은 약 {target_length}자이며, 불필요한 반복으로 분량을 채우지 않습니다.
+9. SEO는 필수이지만 검색엔진을 속이는 문구나 키워드 반복이 아니라 검색 의도·정확한 제목·구조·설명·대체텍스트와 실제 독자 가치를 통해 적용합니다.
+10. 다른 글을 단순 재작성하거나 짜깁기하지 말고, 확인한 근거를 비교·정리해 독자가 추가 검색 없이 핵심을 이해할 수 있는 고유한 설명 가치를 만듭니다.
+11. 상투적인 표현, 기계적인 도입·결론, 같은 표현 반복, 불필요한 목록 남발 등 저품질 글의 특징을 피하고 사람이 직접 작성·편집한 글처럼 자연스러운 한국어 문장과 문단 흐름을 사용합니다.
+12. 직접 겪지 않은 경험·후기·전문성·인터뷰를 꾸며내지 않습니다. 자연스러움을 위해 사실을 조작하지 않습니다.
 {freshness_section}
+[SEO 필수 규칙]
+- 검색 전에 이 글의 대표 검색어, 자연스러운 연관 검색어, 주된 검색 의도를 정합니다.
+- 대표 검색어는 제목과 도입부에 자연스럽게 반영하고, 관련 소제목에는 내용상 필요한 경우에만 사용합니다.
+- 연관 검색어는 의미가 맞는 문맥에서만 사용하며 같은 단어나 유사어를 억지로 반복하지 않습니다.
+- 제목은 본문 내용을 정확히 예고하는 고유한 문장으로 만들고 과장·낚시를 금지합니다.
+- meta_description은 본문을 정확히 요약하면서 검색자가 읽을 이유를 알 수 있는 자연스러운 문장으로 작성합니다.
+- 이미지 alt_text는 이미지 내용과 본문 맥락을 설명하고 키워드 나열용으로 사용하지 않습니다.
+- 검색 노출만을 목적으로 내용과 무관한 인기 키워드·지역명·질문 변형을 추가하지 않습니다.
+
+[이미지 필수 규칙]
+- 이미지가 실제로 이해를 돕는 본문 위치를 스스로 정합니다. 필요 없는 위치에 이미지를 억지로 추가하지 않습니다.
+- 각 image 블록마다 무료 이미지 검색용 search_query와, 무료 이미지를 쓰지 못할 때 즉시 사용할 수 있는 생성용 prompt를 둘 다 작성합니다.
+- 무료 이미지를 찾았다면 `free_image.status`를 `verified_free`로 쓰기 전에 반드시 두 번 확인합니다.
+  1) 해당 이미지의 `개별 자산 페이지`에서 무료 제공이며 결제·Premium·Pro·구독·크레딧이 필요하지 않음을 확인합니다.
+  2) 같은 제공자의 `별도 공식 라이선스 또는 이용약관 페이지`에서 상업적 블로그 사용이 비용 없이 허용됨을 확인합니다.
+- 위 두 확인 URL은 서로 다른 실제 페이지여야 하며 page_url과 license_url에 각각 기록합니다.
+- 워터마크 미리보기만 무료, 고해상도 유료, 무료 체험·구독 가입 전제, 크레딧 소모, Premium/Pro, editorial-only, 상업 이용 불명확, 출처 불명 재배포 이미지는 절대 verified_free로 표시하지 않습니다.
+- 인물·상표·사유재산 등 별도 권리가 명확하지 않아 상업적 게시가 위험한 경우도 verified_free로 표시하지 않습니다.
+- 하나라도 확실하지 않으면 `free_image.status`를 `not_found`로 두고 URL·라이선스를 추측하지 않으며 생성용 prompt를 사용합니다.
+- verified_free일 때만 commercial_use_allowed=true, payment_required=false, premium_or_subscription_required=false, editorial_only=false가 허용됩니다.
+- attribution이 필요하면 정확한 표시 문구를 기록합니다. 직접 이미지 파일 URL을 핫링크하지 말고 원본 자산 페이지를 기록합니다.
+
 [자료팩]
 {pack_markdown}
 
@@ -799,19 +864,22 @@ def build_ai_prompt(
 - 전체: {', '.join(reference_ids) if reference_ids else '없음'}
 - 트렌드 신호: {', '.join(trend_ids) if trend_ids else '없음'}
 - 사용자가 추가한 참고 자료: {', '.join(factual_ids) if factual_ids else '없음'}
-- 웹 검색으로 새로 확인한 출처는 R1, R2, R3처럼 별도 ID를 부여합니다.
+- 웹 검색으로 새로 확인한 사실 출처는 R1, R2, R3처럼 별도 ID를 부여합니다.
 
 [출력 규칙]
-- 아래 schema_version 2.0 구조를 따르는 JSON 코드 블록 하나만 출력합니다.
+- 아래 schema_version 2.1 구조를 따르는 JSON 코드 블록 하나만 출력합니다.
 - JSON 앞뒤에 설명 문장을 쓰지 않습니다.
+- seo 객체를 반드시 작성하고 primary_keyword, secondary_keywords, search_intent, meta_description을 모두 채웁니다.
 - 본문은 blocks 배열에 작성하고 body_markdown이나 image_prompts 항목을 별도로 만들지 않습니다.
 - blocks에서 사용할 수 있는 type은 paragraph, heading, bullet_list, numbered_list, quote, image뿐입니다.
 - paragraph와 quote는 text, heading은 level(1~6)과 text, 목록은 items 문자열 배열을 사용합니다.
-- image 블록은 본문에서 삽입할 순서에 배치하고 position, purpose, prompt, aspect_ratio, caption, alt_text를 모두 작성합니다.
+- image 블록은 본문에서 삽입할 순서에 배치하고 position, purpose, free_image, prompt, aspect_ratio, caption, alt_text를 모두 작성합니다.
+- free_image는 status, search_query, page_url, provider, creator, license_name, license_url, attribution, checked_at, commercial_use_allowed, payment_required, premium_or_subscription_required, editorial_only, verification_note를 모두 포함합니다.
+- 무료 이미지를 찾지 못했거나 2중 확인을 통과하지 못하면 free_image.status=`not_found`로 하고 검증되지 않은 page_url/license_url은 비웁니다.
 - title과 같은 제목을 blocks 첫 heading으로 반복하지 않습니다.
-- sources에는 실제로 참고한 자료만 넣습니다.
+- sources에는 본문의 사실 작성에 실제로 참고한 자료만 넣습니다. 무료 이미지 라이선스 확인 URL은 sources에 섞지 않고 해당 image 블록의 free_image에 기록합니다.
 - 자료팩 출처는 기존 S번호를 유지하고 URL을 변경하지 않습니다.
-- 웹 검색으로 확인한 출처는 R1, R2 형식으로 title, publisher, url, published_at을 모두 기록합니다.
+- 웹 검색으로 확인한 사실 출처는 R1, R2 형식으로 title, publisher, url, published_at을 모두 기록합니다.
 - 검색 결과에 없는 URL을 추측하거나 만들어내지 않습니다.
 - 트렌드 신호를 사용했다면 관심 증가의 근거로만 표현합니다.
 - 이미지가 필요하지 않은 글은 image 블록을 만들지 않아도 됩니다.
@@ -930,7 +998,6 @@ def save_content_pack(
     return {"content_pack_id": content_pack_id, "version": version, **pack}
 
 
-
 def save_quick_content_pack(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -997,6 +1064,7 @@ def save_quick_content_pack(
         "topic_created": topic_created,
         **pack,
     }
+
 
 def list_content_packs(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
     rows = con.execute(

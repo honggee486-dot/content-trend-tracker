@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
-from typing import Any
+from typing import Any, Callable
 
 
 PROGRESS_FILENAME = "dashboard_refresh_progress.json"
@@ -333,3 +333,59 @@ def clear_dashboard_refresh_progress(path: str | Path | None = None) -> None:
         progress_path.unlink()
     except OSError:
         pass
+
+
+def is_dashboard_refresh_active(
+    progress: DashboardRefreshProgress | None,
+    *,
+    project_root: str | Path | None = None,
+    is_process_alive: Callable[[int], bool] | None = None,
+    process_identity_reader: Callable[[int], str] | None = None,
+    refresh_lock_inspector: Callable[..., Any] | None = None,
+    now: datetime | None = None,
+) -> bool:
+    """진행 상태 파일이 running이어도 실제 수집 잠금과 프로세스 생존 여부를 검증합니다."""
+    if progress is None or not progress.active:
+        return False
+
+    pid = int(progress.pid or 0)
+    from src.config import PROJECT_ROOT
+    from src.services.trend_refresh_lock_service import (
+        _is_process_alive,
+        inspect_trend_refresh_lock,
+    )
+    from src.services.process_identity_service import get_process_start_identity
+
+    alive_check = is_process_alive or _is_process_alive
+    identity_reader = process_identity_reader or get_process_start_identity
+    lock_inspector = refresh_lock_inspector or inspect_trend_refresh_lock
+    root = Path(project_root or PROJECT_ROOT).resolve()
+
+    lock_status = lock_inspector(
+        root,
+        is_process_alive=alive_check,
+        process_identity_reader=identity_reader,
+    )
+
+    # 1. 수집 잠금이 활성이고 소유자 PID가 일치하면 확실히 실행 중인 정상 작업입니다.
+    if lock_status.active and lock_status.owner is not None:
+        if pid <= 0 or lock_status.owner.pid == pid:
+            return True
+
+    # 2. OS 프로세스 자체가 종료되었으면 확실히 중단된 작업입니다.
+    if pid <= 0 or not alive_check(pid):
+        return False
+
+    # 3. PID는 살아있으나 잠금이 비활성인 경우:
+    #    프로세스 시작 직후 잠금 파일 생성 전의 짧은 준비 구간(30초)인지 확인합니다.
+    started_time = _parse_time(progress.started_at)
+    current_time = now or datetime.now()
+    if started_time is not None:
+        try:
+            elapsed = (current_time - started_time).total_seconds()
+            if 0.0 <= elapsed < 30.0:
+                return True
+        except TypeError:
+            pass
+
+    return False

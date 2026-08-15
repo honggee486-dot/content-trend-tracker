@@ -78,3 +78,24 @@ def test_large_topic_is_split_with_boundary_overlap() -> None:
     assert set(counts) == set(range(1, 13))
     assert any(count > 1 for count in counts.values())
     assert all(chunk.estimated_tokens <= 3_000 for chunk in chunks)
+
+
+def test_candidate_count_does_not_split_request_when_token_budget_allows() -> None:
+    estimator = AdaptiveInputTokenEstimator(tokens_per_character=0.20)
+    rows = [
+        (index, _candidate(str(index), f"주제{index:04d}", 1))
+        for index in range(1, 401)
+    ]
+
+    chunks, oversized = partition_topic_chunks(
+        rows,
+        view="title",
+        batch_id="batch",
+        estimator=estimator,
+        target_tokens=225_000,
+    )
+
+    assert not oversized
+    assert len(chunks) == 1
+    assert len(chunks[0].candidates) == 400
+    assert chunks[0].estimated_tokens <= 225_000

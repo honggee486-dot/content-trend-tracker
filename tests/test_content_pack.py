@@ -31,7 +31,8 @@ def test_prompt_supports_gemini_and_chatgpt() -> None:
         fact_check_items="수치 확인",
     )
     assert "Gemini와 ChatGPT" in pack["prompt_text"]
-    assert '"schema_version": "2.0"' in pack["prompt_text"]
+    assert '"schema_version": "2.1"' in pack["prompt_text"]
+    assert '"seo"' in pack["prompt_text"]
     assert '"blocks"' in pack["prompt_text"]
     assert '"body_markdown"' not in pack["prompt_text"]
     assert "paragraph, heading, bullet_list, numbered_list, quote, image" in pack["prompt_text"]

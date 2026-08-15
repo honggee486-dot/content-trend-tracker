@@ -305,16 +305,17 @@ try {
     Write-Ok "origin/$BranchName · ahead $($relation.Ahead), behind 0"
 
     Write-Step "3/5 로컬 작업 브랜치 생성·전환·fast-forward"
+    $beforeHead = $null
     $localExists = Invoke-Git -Arguments @(
         'show-ref', '--verify', '--quiet', "refs/heads/$BranchName"
     ) -Quiet -AllowFailure
     if ($localExists.ExitCode -eq 0) {
-        $LocalWorkSha = One-Line (
+        $beforeHead = One-Line (
             Invoke-Git -Arguments @(
                 'rev-parse', "refs/heads/$BranchName^{commit}"
             ) -Quiet
         ) '로컬 작업 브랜치 커밋'
-        if (-not (Is-Ancestor $LocalWorkSha $TargetSha)) {
+        if (-not (Is-Ancestor $beforeHead $TargetSha)) {
             throw "로컬 작업 브랜치가 원격과 diverged 되었거나 더 앞서 있어 자동 갱신할 수 없습니다."
         }
         Invoke-Git -Arguments @('switch', $BranchName) | Out-Null
@@ -323,6 +324,7 @@ try {
         ) | Out-Null
     }
     elseif ($localExists.ExitCode -eq 1) {
+        $beforeHead = $BaseSha
         Invoke-Git -Arguments @(
             'switch', '--track', '-c', $BranchName,
             "refs/remotes/origin/$BranchName"
@@ -335,19 +337,71 @@ try {
     Invoke-Git -Arguments @(
         'branch', "--set-upstream-to=origin/$BranchName", $BranchName
     ) -Quiet | Out-Null
-    $CurrentSha = One-Line (
+    $targetHead = One-Line (
         Invoke-Git -Arguments @('rev-parse', 'HEAD^{commit}') -Quiet
     ) '현재 작업 브랜치 커밋'
-    if ($CurrentSha -ne $TargetSha) {
+    if ($targetHead -ne $TargetSha) {
         throw "로컬 작업 브랜치가 원격 최신 커밋과 일치하지 않습니다."
     }
-    Write-Ok "로컬 $BranchName 을 원격 최신 커밋으로 준비했습니다."
+    if (-not (Is-Ancestor $beforeHead $targetHead)) {
+        throw "적용 전 로컬 커밋($beforeHead)이 대상 커밋($targetHead)의 조상이 아닙니다."
+    }
+    Write-Ok "로컬 $BranchName 을 원격 최신 커밋으로 준비했습니다 (before: $beforeHead -> target: $targetHead)."
 
     Write-Step "4/5 프로젝트 검증 실행"
     $python = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
     if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
         throw "프로젝트 Python을 찾을 수 없습니다: .venv\Scripts\python.exe"
     }
+
+    $isNoOp = ($beforeHead -eq $targetHead)
+    $deltaChanged = @()
+    $deltaFailed = $false
+
+    if (-not $isNoOp) {
+        $deltaResult = Invoke-Git -Arguments @(
+            '-c', 'core.quotepath=false', 'diff', '--name-only',
+            '--diff-filter=ACDMRT', "$beforeHead..$targetHead"
+        ) -Quiet -AllowFailure
+
+        if ($deltaResult.ExitCode -ne 0) {
+            $deltaFailed = $true
+        }
+        else {
+            $deltaChanged = @($deltaResult.Output | Where-Object { $_ })
+        }
+    }
+
+    $mode = ''
+    $scenarios = @()
+    $testFiles = @()
+    $reason = ''
+
+    if ($isNoOp) {
+        $mode = 'no_op'
+        $reason = '적용 대상 커밋 변경이 없는 no-op 업데이트입니다.'
+    }
+    elseif ($deltaFailed) {
+        $mode = 'fallback_all'
+        $reason = '변경 파일 계산 실패로 인해 전체 pytest로 fallback합니다.'
+    }
+    else {
+        $Harness = Join-Path $ProjectRoot 'scripts\agent_test_harness.py'
+        $routingResult = Invoke-CommandChecked `
+            -FilePath $python `
+            -Arguments (@($Harness, '--resolve-targets') + $deltaChanged) `
+            -WorkingDirectory $ProjectRoot `
+            -Quiet
+
+        $routingJson = ($routingResult.Output | Out-String) | ConvertFrom-Json
+        $mode = [string]$routingJson.mode
+        $scenarios = @($routingJson.scenarios | ForEach-Object { [string]$_ })
+        $testFiles = @($routingJson.test_files | ForEach-Object { [string]$_ })
+        $reason = [string]$routingJson.reason
+    }
+
+    Write-Info "검증 라우팅 모드: $mode"
+    Write-Info "근거: $reason"
 
     $TempRoot = Join-Path (
         [IO.Path]::GetTempPath()
@@ -364,29 +418,79 @@ try {
         $env:PYTHONUTF8 = "1"
         $env:PYTHONIOENCODING = "utf-8"
 
-        Invoke-CommandChecked `
-            -FilePath $python `
-            -Arguments @('-m', 'compileall', '-q', 'app.py', 'src', 'tests', 'scripts') `
-            -WorkingDirectory $ProjectRoot `
-            -StreamOutput
-        Write-Ok "Python 구문 검사 통과"
+        if ($mode -eq 'no_op') {
+            Invoke-CommandChecked `
+                -FilePath $python `
+                -Arguments @('scripts/check_text_hygiene.py') `
+                -WorkingDirectory $ProjectRoot `
+                -StreamOutput
+            Write-Ok "텍스트 위생 검사 통과 (no-op update)"
+        }
+        elseif ($mode -eq 'doc_only') {
+            Invoke-CommandChecked `
+                -FilePath $python `
+                -Arguments @('scripts/check_text_hygiene.py') `
+                -WorkingDirectory $ProjectRoot `
+                -StreamOutput
+            Write-Ok "텍스트 위생 검사 통과"
 
-        Invoke-CommandChecked `
-            -FilePath $python `
-            -Arguments @('scripts/check_text_hygiene.py') `
-            -WorkingDirectory $ProjectRoot `
-            -StreamOutput
-        Write-Ok "텍스트 위생 검사 통과"
+            Invoke-CommandChecked `
+                -FilePath $python `
+                -Arguments (@(
+                    '-m', 'pytest', '-q', '-p', 'no:cacheprovider',
+                    "--basetemp=$PytestTemp"
+                ) + $testFiles) `
+                -WorkingDirectory $ProjectRoot `
+                -StreamOutput
+            Write-Ok "문서 계약 테스트 통과"
+        }
+        elseif ($mode -eq 'selective') {
+            Invoke-CommandChecked `
+                -FilePath $python `
+                -Arguments @('-m', 'compileall', '-q', 'app.py', 'src', 'tests', 'scripts') `
+                -WorkingDirectory $ProjectRoot `
+                -StreamOutput
+            Write-Ok "Python 구문 검사 통과"
 
-        Invoke-CommandChecked `
-            -FilePath $python `
-            -Arguments @(
-                '-m', 'pytest', '-q', '-p', 'no:cacheprovider',
-                "--basetemp=$PytestTemp"
-            ) `
-            -WorkingDirectory $ProjectRoot `
-            -StreamOutput
-        Write-Ok "전체 pytest 통과"
+            Invoke-CommandChecked `
+                -FilePath $python `
+                -Arguments @('scripts/check_text_hygiene.py') `
+                -WorkingDirectory $ProjectRoot `
+                -StreamOutput
+            Write-Ok "텍스트 위생 검사 통과"
+
+            Invoke-CommandChecked `
+                -FilePath $python `
+                -Arguments (@($Harness) + $scenarios) `
+                -WorkingDirectory $ProjectRoot `
+                -StreamOutput
+            Write-Ok "선택 하네스 시나리오 통과 ($($scenarios -join ', '))"
+        }
+        else {
+            Invoke-CommandChecked `
+                -FilePath $python `
+                -Arguments @('-m', 'compileall', '-q', 'app.py', 'src', 'tests', 'scripts') `
+                -WorkingDirectory $ProjectRoot `
+                -StreamOutput
+            Write-Ok "Python 구문 검사 통과"
+
+            Invoke-CommandChecked `
+                -FilePath $python `
+                -Arguments @('scripts/check_text_hygiene.py') `
+                -WorkingDirectory $ProjectRoot `
+                -StreamOutput
+            Write-Ok "텍스트 위생 검사 통과"
+
+            Invoke-CommandChecked `
+                -FilePath $python `
+                -Arguments @(
+                    '-m', 'pytest', '-n', '6', '--dist', 'loadfile', '-q', '-p', 'no:cacheprovider',
+                    "--basetemp=$PytestTemp"
+                ) `
+                -WorkingDirectory $ProjectRoot `
+                -StreamOutput
+            Write-Ok "전체 pytest (병렬) 통과"
+        }
     }
     finally {
         $env:PYTHONPYCACHEPREFIX = $oldCache

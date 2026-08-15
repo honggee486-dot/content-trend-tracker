@@ -10,21 +10,22 @@ def _read(path: str) -> str:
     return (PROJECT_ROOT / path).read_text(encoding="utf-8")
 
 
-def test_release_0_10_109_metadata_is_aligned() -> None:
+def test_release_0_10_110_metadata_is_aligned() -> None:
     version = _read("VERSION").strip()
     changelog = _read("CHANGELOG.md")
-    release_note = _read("docs/releases/0.10.109.md")
+    release_note = _read("docs/releases/0.10.110.md")
     context = _read("AI_CONTEXT.md")
     next_work = _read("docs/NEXT_WORK.md")
     ci = _read(".github/workflows/ci.yml")
 
-    assert version == "0.10.109"
-    assert changelog.startswith("## 0.10.109 - 2026-08-12\n")
-    assert release_note.startswith("# 0.10.109 진단 신뢰성과 하네스 라우팅 안정화\n")
-    assert "deterministic baseline" in release_note
+    assert version == "0.10.110"
+    assert changelog.startswith("## 0.10.110 - 2026-08-15\n")
+    assert release_note.startswith("# 0.10.110 AI 요청·블로그 제작 흐름 안정화\n")
+    assert "세 차례 추가 웹 재검증" in release_note
+    assert "contentReference" in release_note
     assert "`behind 0`, `ahead 1`" in release_note
-    assert "현재 문서 기준 버전: `0.10.109`" in context
-    assert "## 0.10.109 릴리스 범위" in next_work
+    assert "현재 문서 기준 버전: `0.10.110`" in context
+    assert "## 0.10.110 릴리스 범위" in next_work
     assert "workflow_dispatch:" in ci
     assert "contents: read" in ci
     assert "Public tracked-tree safety check" in ci
@@ -57,7 +58,7 @@ def test_release_0_10_107_changelog_and_note_are_aligned() -> None:
 def test_ai_context_keeps_0_10_107_runtime_contract() -> None:
     context = _read("AI_CONTEXT.md")
 
-    assert "- 현재 문서 기준 버전: `0.10.109`" in context
+    assert "- 현재 문서 기준 버전: `0.10.110`" in context
     assert "## 5. 0.10.107 운영·진단 계약" in context
     assert "누락·검증 탈락 ID만 최대 한 번 보강" in context
     assert "희소 응답 상호 배타·대표 후보 계약" in context

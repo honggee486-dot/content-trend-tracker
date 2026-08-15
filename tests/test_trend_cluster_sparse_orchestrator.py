@@ -240,3 +240,94 @@ def test_orchestrator_surfaces_cross_category_duplicate_diagnostic() -> None:
     assert "duplicate_candidate_no=1" in result.error_message
     assert "cross_category_duplicate_candidate_no=1" in result.error_message
     assert "duplicate_within_new_group_candidate_no" not in result.error_message
+
+
+def test_orchestrator_notifies_progress_callback_per_chunk() -> None:
+    candidates = [
+        _candidate("a", "후보 A", "주제 A"),
+        _candidate("b", "후보 B", "주제 B"),
+    ]
+    progress_updates: list[tuple[float, str]] = []
+
+    result = classify_sparse_multi_view_batch(
+        _config(),
+        candidates,
+        api_call=_fake_sparse_api,
+        estimator=AdaptiveInputTokenEstimator(tokens_per_character=1.0),
+        limiter=SlidingWindowTpmLimiter(limit=250_000),
+        progress_callback=lambda r, msg: progress_updates.append((r, msg)),
+    )
+
+    assert result.status == "success"
+    assert len(progress_updates) >= 4
+    assert any("Flash-Lite 2차 군집 [제목" in msg for _, msg in progress_updates)
+    assert any("Flash-Lite 2차 군집 [사건" in msg for _, msg in progress_updates)
+
+
+def test_orchestrator_handles_timeout_gracefully_and_returns_partial_or_uncertain_status() -> None:
+    from src.services.gemini_service import GeminiHttpError, _ApiErrorInfo
+
+    candidates = [
+        _candidate("a", "후보 A", "주제 A"),
+        _candidate("b", "후보 B", "주제 B"),
+    ]
+
+    def timeout_api(_config, request_text, _request_hash, **kwargs):
+        raise GeminiHttpError(
+            _ApiErrorInfo(
+                http_status=0,
+                error_type="request_timeout",
+                message="Gemini API 응답이 90초 안에 완료되지 않아 연결을 종료했습니다.",
+                retryable=False,
+                retry_delay_seconds=None,
+            )
+        )
+
+    result = classify_sparse_multi_view_batch(
+        _config(),
+        candidates,
+        api_call=timeout_api,
+        estimator=AdaptiveInputTokenEstimator(tokens_per_character=1.0),
+        limiter=SlidingWindowTpmLimiter(limit=250_000),
+    )
+
+    assert result.status in {"uncertain", "failed"}
+    assert len(result.assignments) == 2
+    assert all(row["decision"] == "uncertain" for row in result.assignments)
+
+
+def test_sparse_executor_caps_timeout_at_240_seconds() -> None:
+    from src.services.trend_cluster_sparse_executor import execute_sparse_views
+
+    candidates = [_candidate("a", "후보 A", "주제 A")]
+    captured_timeouts: list[int] = []
+
+    def capturing_api(_config, _text, _hash, **kwargs):
+        captured_timeouts.append(kwargs.get("timeout_seconds"))
+        response = {
+            "existing_links": [],
+            "new_groups": [],
+            "uncertain_nos": [],
+            "conflicts": [],
+        }
+        return (json.dumps(response), 100, 10, 0, 110, "STOP", "")
+
+    long_timeout_config = GeminiConfig(
+        api_key="test-key",
+        model="gemini-test",
+        app_id="test-app",
+        quota_scope_id="test-scope",
+        timeout_seconds=300,
+        retry_wait_seconds=1.0,
+        retry_max_wait_seconds=2.0,
+    )
+
+    execute_sparse_views(
+        long_timeout_config,
+        candidates,
+        batch_id="test_batch",
+        api_call=capturing_api,
+    )
+
+    assert captured_timeouts
+    assert all(t <= 240 for t in captured_timeouts)

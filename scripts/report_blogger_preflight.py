@@ -37,7 +37,10 @@ def _print_human(report) -> None:
     print("OAuth 비밀값 출력: 없음")
 
 
-def main() -> int:
+from typing import Sequence
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="비밀값을 출력하지 않고 Blogger OAuth·API 준비 상태를 검사합니다."
     )
@@ -58,7 +61,7 @@ def main() -> int:
         action="store_true",
         help="사람용 요약 대신 개인정보 제한 JSON을 출력",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     report = build_blogger_preflight_report(
         client_secret_path=args.client.expanduser().resolve(),

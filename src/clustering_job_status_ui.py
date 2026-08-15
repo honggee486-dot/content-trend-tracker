@@ -131,7 +131,9 @@ def _render_live_progress(st_module: Any) -> None:
             get_representative_clustering_job,
         )
 
-        with connect_database(DEFAULT_DB_PATH, read_only=True) as con:
+        # Streamlit의 기본 연결과 같은 DuckDB 구성으로 짧게 읽습니다. 동일 DB 파일을
+        # read_only=True로 다시 열면 기존 read/write 연결과 configuration 충돌이 납니다.
+        with connect_database(DEFAULT_DB_PATH) as con:
             job = get_representative_clustering_job(con)
     except Exception as exc:
         st_module.caption(f"2차 군집 진행 상태를 불러오지 못했습니다: {exc}")

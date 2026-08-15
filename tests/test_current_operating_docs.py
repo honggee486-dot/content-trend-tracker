@@ -11,7 +11,7 @@ def test_current_operating_docs_match_gemini_fifteen_item_default() -> None:
     config = (PROJECT_ROOT / "src" / "config.py").read_text(encoding="utf-8")
 
     assert "요청당 기본값: **글감 15개**, 허용 상한: **30개**" in readme
-    assert "현재 문서 기준 버전: `0.10.109`" in context
+    assert "현재 문서 기준 버전: `0.10.110`" in context
     assert "요청당 기본값 `15개`·허용 상한 `30개`" in context
     assert "GEMINI_TOPIC_ANGLE_ITEMS_PER_REQUEST=15" in example
     assert "BACKGROUND_TOPIC_ANGLE_ITEMS_PER_REQUEST = 15" in config
@@ -235,7 +235,7 @@ def test_current_docs_describe_087_topic_angle_quality_diagnostic() -> None:
     release = (PROJECT_ROOT / "docs" / "releases" / "0.10.87.md").read_text(encoding="utf-8")
     database = (PROJECT_ROOT / "src" / "database.py").read_text(encoding="utf-8")
 
-    assert "현재 문서 기준 버전: `0.10.109`" in context
+    assert "현재 문서 기준 버전: `0.10.110`" in context
     assert "주제 방향 v6 품질·운영 진단" in readme
     assert "성공 요청 4회·요청 글감 60개" in readme
     assert "feature_version VARCHAR NOT NULL DEFAULT ''" in database

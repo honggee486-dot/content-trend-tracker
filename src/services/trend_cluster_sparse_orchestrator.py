@@ -118,6 +118,7 @@ def classify_sparse_multi_view_batch(
     api_call: Callable[..., tuple[Any, ...]] = call_gemini_structured_output,
     estimator: AdaptiveInputTokenEstimator | None = None,
     limiter: SlidingWindowTpmLimiter | None = None,
+    progress_callback: Callable[[float, str], None] | None = None,
 ) -> Any:
     """관점별 희소 응답을 모두 모은 뒤 병합·단독·보류를 최종 결정합니다."""
     from src.services.trend_cluster_ai_review_service import ClusterGroupingExecution
@@ -148,6 +149,7 @@ def classify_sparse_multi_view_batch(
         api_call=api_call,
         estimator=estimator,
         limiter=limiter,
+        progress_callback=progress_callback,
     )
     assignments, aggregate_diagnostics = aggregate_sparse_assignments(
         selected,

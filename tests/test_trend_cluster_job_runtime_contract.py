@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from datetime import datetime
 from types import SimpleNamespace
 
+import src.services.trend_clustering_job_service as job_service
+import src.services.trend_refresh_clustering_job_history_runtime as refresh_history_runtime
+from src.database import connect_database, init_database
 from src.services.trend_cluster_job_runtime_contract import (
     CLUSTERING_ADAPTIVE_JOB_STALE_MINUTES,
+    _install_ranking_only_refresh_contract,
     install_job_token_contract,
+)
+from src.services.trend_refresh_clustering_job_history_runtime import (
+    _record_refresh_clustering_job,
+    install_refresh_clustering_job_history_contract,
 )
 
 
@@ -56,3 +66,292 @@ def test_job_contract_preserves_existing_active_job_message() -> None:
     assert result["created"] is False
     assert result["message"] == "이미 군집 처리 작업이 실행 중입니다."
     assert module.JOB_STALE_AFTER_MINUTES == 120
+
+
+def test_job_contract_applies_ranking_only_refresh_before_no_pending_fast_exit() -> None:
+    preparation = SimpleNamespace(
+        status="ready",
+        pending_item_count=0,
+        selected_items=(),
+    )
+    calculation = SimpleNamespace(status="calculated")
+    calls: list[tuple[str, object]] = []
+
+    def calculate(received):
+        calls.append(("calculate", received))
+        return calculation
+
+    def finalize(con, received):
+        calls.append(("finalize", (con, received)))
+        return {"status": "success"}
+
+    module = SimpleNamespace(
+        JOB_STALE_AFTER_MINUTES=20,
+        get_clustering_job_settings=lambda _con: {},
+        create_clustering_job=lambda *_args, **_kwargs: {"created": False},
+        prepare_trend_ranking_rebuild=lambda _con, **_kwargs: preparation,
+        calculate_prepared_trend_rankings=calculate,
+        finalize_prepared_trend_rankings=finalize,
+    )
+    con = object()
+
+    install_job_token_contract(module, scan_limit=50_000, max_batches=1)
+    returned = module.prepare_trend_ranking_rebuild(con, lookback_hours=72)
+
+    assert returned is preparation
+    assert calls == [
+        ("calculate", preparation),
+        ("finalize", (con, calculation)),
+    ]
+
+
+def test_job_contract_does_not_precalculate_reused_or_pending_work() -> None:
+    state = {
+        "preparation": SimpleNamespace(
+            status="reused",
+            pending_item_count=0,
+            selected_items=(),
+        )
+    }
+    calls: list[str] = []
+    module = SimpleNamespace(
+        JOB_STALE_AFTER_MINUTES=20,
+        get_clustering_job_settings=lambda _con: {},
+        create_clustering_job=lambda *_args, **_kwargs: {"created": False},
+        prepare_trend_ranking_rebuild=lambda _con, **_kwargs: state["preparation"],
+        calculate_prepared_trend_rankings=lambda _preparation: calls.append("calculate"),
+        finalize_prepared_trend_rankings=lambda _con, _calculation: calls.append("finalize"),
+    )
+
+    install_job_token_contract(module, scan_limit=50_000, max_batches=1)
+    module.prepare_trend_ranking_rebuild(object(), lookback_hours=72)
+
+    state["preparation"] = SimpleNamespace(
+        status="ready",
+        pending_item_count=2,
+        selected_items=({"source_item_id": "item-1"},),
+    )
+    module.prepare_trend_ranking_rebuild(object(), lookback_hours=72)
+
+    assert calls == []
+
+
+def test_ranking_only_refresh_runs_through_job_loop_without_regular_batch(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    preparation = SimpleNamespace(
+        status="ready",
+        pending_item_count=0,
+        selected_items=(),
+    )
+    calculation = SimpleNamespace(status="calculated")
+    calls: list[str] = []
+    statuses: list[tuple[str, bool]] = []
+    released: list[bool] = []
+
+    class DummyConnection:
+        def execute(self, _query, _params=None):
+            return self
+
+        def fetchone(self):
+            return (50_000, 1)
+
+    class DummyLock:
+        def release(self) -> None:
+            released.append(True)
+
+    @contextmanager
+    def fake_connect_database(_db_path):
+        yield DummyConnection()
+
+    def calculate(received):
+        assert received is preparation
+        calls.append("calculate")
+        return calculation
+
+    def finalize(_con, received):
+        assert received is calculation
+        calls.append("finalize")
+        return {"status": "success"}
+
+    def update_status(_con, _job_id, *, status, finished=False, **_kwargs):
+        statuses.append((str(status), bool(finished)))
+
+    def forbidden_regular_batch(*_args, **_kwargs):
+        raise AssertionError("순위 전용 갱신은 일반 군집 배치 경로로 들어가면 안 됩니다.")
+
+    monkeypatch.setattr(
+        job_service,
+        "acquire_trend_clustering_lock",
+        lambda **_kwargs: SimpleNamespace(
+            acquired=True,
+            lock=DummyLock(),
+            message="",
+        ),
+    )
+    monkeypatch.setattr(job_service, "connect_database", fake_connect_database)
+    monkeypatch.setattr(job_service, "_update_job_status", update_status)
+    monkeypatch.setattr(
+        job_service,
+        "prepare_trend_ranking_rebuild",
+        lambda _con, **_kwargs: preparation,
+    )
+    monkeypatch.setattr(job_service, "calculate_prepared_trend_rankings", calculate)
+    monkeypatch.setattr(job_service, "finalize_prepared_trend_rankings", finalize)
+    monkeypatch.setattr(job_service, "_apply_job_limits", forbidden_regular_batch)
+    monkeypatch.setattr(job_service, "_mark_batch_started", forbidden_regular_batch)
+    monkeypatch.setattr(job_service, "_record_batch", forbidden_regular_batch)
+
+    _install_ranking_only_refresh_contract(job_service)
+    exit_code = job_service.run_clustering_job(
+        "job-ranking-only",
+        db_path=tmp_path / "ranking-only.duckdb",
+        project_root=tmp_path,
+        lookback_hours=72,
+    )
+
+    assert exit_code == 0
+    assert calls == ["calculate", "finalize"]
+    assert statuses == [("running", False), ("success", True)]
+    assert released == [True]
+
+
+def test_refresh_inline_clustering_is_recorded_in_job_and_batch_history(tmp_path) -> None:
+    db_path = tmp_path / "refresh-job-history.duckdb"
+    init_database(db_path)
+    started_at = datetime(2026, 8, 11, 3, 2, 0)
+    preparation = SimpleNamespace(
+        ai_clustering_model="gemini-test",
+        ai_clustering_max_items=4_000,
+        ai_clustering_batch_size=200,
+        ai_clustering_max_batches=5,
+        pending_item_count=4,
+    )
+    result = {
+        "reused": False,
+        "ai_clustering": {
+            "status": "success",
+            "remaining_items": 0,
+            "error_message": "",
+        },
+        "batch_log": {
+            "status": "success",
+            "scanned_pending_items": 4,
+            "first_stage_units": 2,
+            "all_first_stage_units": 2,
+            "source_items": 4,
+            "processed_units": 2,
+            "processed_source_items": 4,
+            "existing_links": 1,
+            "new_clusters": 1,
+            "uncertain_units": 0,
+            "conflict_units": 0,
+            "needs_review_items": 0,
+            "input_tokens": 120,
+            "output_tokens": 20,
+            "thought_tokens": 10,
+            "total_tokens": 150,
+        },
+    }
+
+    with connect_database(db_path) as con:
+        job_id = _record_refresh_clustering_job(
+            con,
+            preparation=preparation,
+            result=result,
+            started_at=started_at,
+            duration_ms=3500,
+        )
+        job = con.execute(
+            """
+            SELECT launcher, status, model_name, scan_limit, batch_size, max_batches,
+                   completed_batches, processed_units, processed_source_items,
+                   existing_links, new_clusters, finished_at
+            FROM trend_clustering_jobs
+            WHERE job_id = ?
+            """,
+            [job_id],
+        ).fetchone()
+        batch = con.execute(
+            """
+            SELECT status, first_stage_units, processed_units,
+                   processed_source_items, total_tokens, duration_ms
+            FROM trend_clustering_job_batches
+            WHERE job_id = ? AND batch_number = 1
+            """,
+            [job_id],
+        ).fetchone()
+
+    assert job_id and job_id.startswith("cluster_job_")
+    assert job[:11] == (
+        "trend-refresh-ranking",
+        "success",
+        "gemini-test",
+        4_000,
+        200,
+        5,
+        1,
+        2,
+        4,
+        1,
+        1,
+    )
+    assert job[11] is not None
+    assert batch == ("success", 2, 2, 4, 150, 3500)
+
+
+def test_refresh_history_contract_links_finalize_result_to_new_job(monkeypatch) -> None:
+    preparation = SimpleNamespace(status="ready")
+    calculation = SimpleNamespace(preparation=preparation)
+    con = object()
+    recorded: list[tuple[object, object, dict]] = []
+    module = None
+
+    def calculate(received):
+        assert received is preparation
+        return calculation
+
+    def finalize(received_con, received_calculation):
+        assert received_con is con
+        assert received_calculation is calculation
+        return {
+            "reused": False,
+            "ai_clustering": {"status": "success"},
+            "ai_review": {"status": "success"},
+            "batch_log": {"processed_units": 1},
+        }
+
+    def refresh():
+        calculated = module.calculate_prepared_trend_rankings(preparation)
+        return module.finalize_prepared_trend_rankings(con, calculated)
+
+    module = SimpleNamespace(
+        refresh_trend_sources_short_connections=refresh,
+        calculate_prepared_trend_rankings=calculate,
+        finalize_prepared_trend_rankings=finalize,
+    )
+
+    def fake_record(received_con, *, preparation, result, started_at, duration_ms):
+        assert received_con is con
+        assert isinstance(started_at, datetime)
+        assert duration_ms >= 0
+        recorded.append((received_con, preparation, dict(result)))
+        return "cluster_job_refresh_test"
+
+    monkeypatch.setattr(
+        refresh_history_runtime,
+        "_record_refresh_clustering_job",
+        fake_record,
+    )
+    install_refresh_clustering_job_history_contract(module)
+
+    result = module.refresh_trend_sources_short_connections()
+
+    assert len(recorded) == 1
+    assert recorded[0][1] is preparation
+    assert result["ai_clustering"]["job_id"] == "cluster_job_refresh_test"
+    assert result["ai_review"]["job_id"] == "cluster_job_refresh_test"
+
+    module.finalize_prepared_trend_rankings(con, calculation)
+    assert len(recorded) == 1

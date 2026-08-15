@@ -229,6 +229,13 @@ def get_gemini_config(*, model: str | None = None) -> GeminiConfig:
     )
 
 
+_DIRECTORIES_ENSURED = False
+
+
 def ensure_project_directories() -> None:
+    global _DIRECTORIES_ENSURED
+    if _DIRECTORIES_ENSURED and DATA_DIR.is_dir() and EXPORTS_DIR.is_dir():
+        return
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    _DIRECTORIES_ENSURED = True

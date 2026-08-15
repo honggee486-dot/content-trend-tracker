@@ -85,7 +85,10 @@ def _print_human(report: dict) -> None:
     )
 
 
-def main() -> int:
+from typing import Sequence
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "실제 DuckDB를 수정하지 않고 NAVER·Daum 최근 분석 시간 범위 전체가 "
@@ -103,7 +106,7 @@ def main() -> int:
         action="store_true",
         help="사람용 요약 대신 JSON을 출력",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     db_path = args.db.expanduser().resolve()
     if not db_path.exists():

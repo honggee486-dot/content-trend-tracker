@@ -13,7 +13,7 @@ ChatGPT나 Agent가 실제 운영 DB, 외부 API, Windows 작업 스케줄러를
 - 주제 방향 자동 생성의 요청·검증·저장·재실행 멱등성
 - 실제 DB를 변경하지 않는 운영 진단 보고서·CLI·표본 판단 계약
 - 버튼·작업·Gemini 전송 운영 로그와 앱 supervisor·웹 업데이트 계약
-- 제작 화면 이동과 AI 요청서 → AI 결과 → 편집 → 발행 보조 상태 계약
+- 제작 화면 이동, AI 요청서 → AI 결과 → 편집 → 발행 보조, AdSense 후보·블로그 추천 표시 계약
 - 개발 하네스와 `apply_update` 안전 계약
 
 ## 실행
@@ -50,7 +50,22 @@ ChatGPT나 Agent가 실제 운영 DB, 외부 API, Windows 작업 스케줄러를
 .\.venv\Scripts\python.exe scripts\agent_test_harness.py --list
 ```
 
-`check_harness.ps1`은 프로젝트 `.venv`, `venv`, 실행 가능한 시스템 Python 순으로 선택한다. 프로젝트 가상환경이 있으면 항상 우선한다. 지원 시나리오·별칭과 테스트 묶음은 `scripts/agent_test_harness.py`가 단일 기준이며 BAT와 PowerShell 진입점은 같은 목록을 다시 정의하지 않는다.
+작업 브랜치 적용기가 특정 변경 파일을 어떤 검증으로 분류하는지 확인하려면 다음처럼 `--resolve-targets`를 사용한다.
+
+```powershell
+.\.venv\Scripts\python.exe scripts\agent_test_harness.py --resolve-targets src/services/adsense_candidate_service.py src/trend_candidate_blog_recommendation_ui.py
+```
+
+`check_harness.ps1`은 프로젝트 `.venv`, `venv`, 실행 가능한 시스템 Python 순으로 선택한다. 프로젝트 가상환경이 있으면 항상 우선한다. 지원 시나리오·별칭·테스트 묶음과 작업 브랜치용 명시적 파일 분류표는 `scripts/agent_test_harness.py`가 단일 기준이며 BAT와 PowerShell 진입점은 같은 목록을 다시 정의하지 않는다.
+
+`apply_update.bat work/<다음 버전>`은 실제 적용 직전 `beforeHead..targetHead` 증분 diff를 `--resolve-targets`에 넘긴다. 결과는 다음 네 모드 중 하나다.
+
+- `no_op`: 적용 대상 커밋 차이가 없을 때 최소 위생 검사
+- `doc_only`: 문서·위생 규칙만 바뀐 경우 텍스트 검사와 문서 계약 테스트
+- `selective`: 1~2개 기존 시나리오 경계에 명확히 속하면 해당 하네스만 실행
+- `fallback_all`: 핵심 파일, 분류되지 않은 파일, 3개 이상 영역, diff 계산 실패 등 안전 경계에서 전체 pytest 실행
+
+라우팅 JSON은 PowerShell 7과 Windows PowerShell 5.1 모두에서 안정적으로 읽히도록 ASCII-safe로 출력하고, PowerShell에서 역직렬화한 뒤 사람이 읽는 한글 이유를 표시한다.
 
 ## 시나리오별 역할
 
@@ -92,7 +107,7 @@ Windows 예약 작업 명령 생성과 상태·쿼터 해석을 검증한다. �
 
 ### `workflow`
 
-AI 요청서 → AI 결과 가져오기 → 글 편집 → 발행 보조의 Streamlit 상태·이동 계약과 자료팩 전환 회귀를 검증한다. 이 시나리오는 **실제 브라우저 렌더링을 실행했다는 뜻이 아니다.** 실제 브라우저·사용자 DB 표본은 별도 사용자 검증 대상으로 남긴다.
+AI 요청서 → AI 결과 가져오기 → 글 편집 → 발행 보조의 Streamlit 상태·이동 계약, 자료팩 전환 회귀, AdSense 후보 판단, 블로그 추천 서비스와 글감 추천 표시 UI 계약을 검증한다. 이 시나리오는 **실제 브라우저 렌더링을 실행했다는 뜻이 아니다.** 실제 브라우저·사용자 DB 표본은 별도 사용자 검증 대상으로 남긴다.
 
 ### `harness`
 
@@ -102,11 +117,11 @@ AI 요청서 → AI 결과 가져오기 → 글 편집 → 발행 보조의 Stre
 
 - 먼저 변경 파일과 직접 연결된 테스트 또는 위 시나리오를 실행한다.
 - 실패를 수정했다면 영향받은 같은 시나리오를 다시 실행한다.
-- 새 테스트가 기존 시나리오 책임에 들어가면 해당 묶음에 추가하고, 별도 시나리오는 만들지 않는다.
+- 새 테스트나 새 파일이 기존 시나리오 책임에 들어가면 해당 `SCENARIO_TESTS` 묶음과 `classify_file()` 경계를 함께 갱신하고, 별도 시나리오는 만들지 않는다.
 - 여러 테스트가 반복해서 함께 변경되고 별도 확인 경로가 있어야 선택 실수를 줄일 수 있을 때만 새 시나리오를 만든다. 단일 파일·일회성 검증은 직접 pytest로 유지한다.
-- 관련 검증이 안정된 뒤 제품 코드·운영 계약·하네스 변경은 `compileall`, 텍스트 검사, 전체 pytest를 최종 게이트로 수행한다.
 - 문서만 변경했고 실행 계약이 바뀌지 않았다면 텍스트 검사와 해당 문서 계약 테스트를 우선하며 전체 pytest를 기계적으로 반복하지 않는다.
-- GitHub CI와 `apply_update`의 전체 회귀는 최종 통합 게이트로 유지한다.
+- 작업 브랜치 적용에서는 `no_op / doc_only / selective / fallback_all` 라우팅을 사용하고, 안전하게 분류할 수 없는 파일을 단지 속도를 위해 억지로 기존 시나리오에 넣지 않는다.
+- GitHub CI의 전체 pytest와 릴리스 최종 검증은 통합 게이트로 유지한다. 같은 HEAD에서 이미 유효하게 통과했고 이후 영향받지 않은 전체 검증은 로컬에서 이유 없이 반복하지 않는다.
 
 ## 안전 경계
 
@@ -124,10 +139,10 @@ AI 요청서 → AI 결과 가져오기 → 글 편집 → 발행 보조의 Stre
 ## 하네스 확장 절차
 
 1. 변경 영역이 기존 시나리오에 속하는지 먼저 확인한다.
-2. 기존 경계에 속하면 `SCENARIO_TESTS`의 해당 묶음만 확장한다.
+2. 기존 경계에 속하면 `SCENARIO_TESTS`의 해당 묶음과 `classify_file()`의 경계를 함께 확장하고 대표 변경 파일이 `selective`로 분류되는 계약 테스트를 추가한다.
 3. 독립 영역의 여러 테스트가 반복해서 함께 변경되고 직접 테스트 선택이 누락되기 시작할 때만 `SCENARIO_TESTS`와 `SCENARIO_ORDER`에 새 시나리오를 추가한다.
-4. 하네스 계약 테스트와 이 문서의 라우팅을 함께 갱신한다.
-5. BAT·PowerShell에 시나리오 enum을 복제하거나 자동 파일 분류기·Hook을 추가하지 않는다. 그런 자동화는 명확한 반복 비용이 확인된 뒤 별도 작업으로 검토한다.
+4. 시나리오 책임이 달라졌다면 하네스 계약 테스트와 이 문서의 라우팅 설명을 함께 갱신한다.
+5. BAT·PowerShell에 시나리오 enum이나 파일 분류표를 복제하지 않는다. 현재의 단순 명시적 분류표보다 복잡한 의존성 그래프 기반 선택기, Git Hook, Hook 기반 자동 실행, 다중 Agent 오케스트레이션은 명확한 반복 비용과 검증 이득이 확인된 뒤 별도 작업으로 검토한다.
 
 ## Agent 보고 형식
 

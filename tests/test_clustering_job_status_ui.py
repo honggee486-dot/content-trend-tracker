@@ -110,7 +110,7 @@ def test_header_refresh_click_triggers_rerun() -> None:
     assert fake.rerun_count == 1
 
 
-def test_live_progress_uses_read_only_representative_job(monkeypatch) -> None:
+def test_live_progress_uses_app_compatible_database_configuration(monkeypatch) -> None:
     calls = []
 
     class _Connection:
@@ -136,7 +136,7 @@ def test_live_progress_uses_read_only_representative_job(monkeypatch) -> None:
     _render_live_progress(_FakeStreamlit())
 
     assert len(calls) == 1
-    assert calls[0][1] is True
+    assert calls[0][1] is False
 
 
 def test_legacy_batch_count_is_displayed_as_single_snapshot() -> None:

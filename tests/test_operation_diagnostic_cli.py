@@ -9,6 +9,7 @@ from scripts.report_operation_diagnostics import (
     _build_read_only_verification,
     _capture_database_state,
     _print_deterministic_baseline,
+    main,
 )
 from src.database import init_database
 
@@ -43,30 +44,19 @@ def test_read_only_verification_detects_wal_creation(tmp_path: Path) -> None:
     assert any(change["file"] == "wal" for change in verification["changes"])
 
 
-def test_json_cli_verifies_database_and_wal_are_unchanged(tmp_path: Path) -> None:
+def test_json_cli_verifies_database_and_wal_are_unchanged(
+    tmp_path: Path,
+    capsys,
+) -> None:
     db_path = tmp_path / "operation-cli.duckdb"
     init_database(db_path)
     before = _capture_database_state(db_path)
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-X",
-            "utf8",
-            str(PROJECT_ROOT / "scripts" / "report_operation_diagnostics.py"),
-            "--db",
-            str(db_path),
-            "--json",
-        ],
-        cwd=PROJECT_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    exit_code = main(["--db", str(db_path), "--json"])
+    captured = capsys.readouterr()
 
-    assert completed.returncode == 0, completed.stderr
-    report = json.loads(completed.stdout)
+    assert exit_code == 0, captured.err
+    report = json.loads(captured.out)
     assert report["read_only"] is True
     assert report["read_only_verification"]["verified"] is True
     assert report["read_only_verification"]["changes"] == []
@@ -80,32 +70,20 @@ def test_json_cli_verifies_database_and_wal_are_unchanged(tmp_path: Path) -> Non
 
 def test_human_cli_prints_read_only_topic_angle_selection_funnel(
     tmp_path: Path,
+    capsys,
 ) -> None:
     db_path = tmp_path / "operation-cli-human.duckdb"
     init_database(db_path)
     before = _capture_database_state(db_path)
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-X",
-            "utf8",
-            str(PROJECT_ROOT / "scripts" / "report_operation_diagnostics.py"),
-            "--db",
-            str(db_path),
-        ],
-        cwd=PROJECT_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    exit_code = main(["--db", str(db_path)])
+    captured = capsys.readouterr()
 
-    assert completed.returncode == 0, completed.stderr
-    assert "[주제 방향 대상 선정 · 읽기 전용 현재 조건 추정]" in completed.stdout
-    assert "실제 생성은 수행하지 않으며" in completed.stdout
-    assert "[군집 품질 표본 · 읽기 전용 재구성]" in completed.stdout
-    assert "[결정론적 군집 baseline · 읽기 전용 비교]" in completed.stdout
+    assert exit_code == 0, captured.err
+    assert "[주제 방향 대상 선정 · 읽기 전용 현재 조건 추정]" in captured.out
+    assert "실제 생성은 수행하지 않으며" in captured.out
+    assert "[군집 품질 표본 · 읽기 전용 재구성]" in captured.out
+    assert "[결정론적 군집 baseline · 읽기 전용 비교]" in captured.out
     assert _capture_database_state(db_path) == before
 
 
