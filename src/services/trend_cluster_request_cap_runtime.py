@@ -3,8 +3,24 @@ from __future__ import annotations
 from typing import Any
 
 # 과거 후보 개수 상한과 호환하기 위한 충분히 큰 값입니다. 실제 요청 분할은
-# 개수가 아니라 CLUSTERING_TARGET_INPUT_TOKENS / HARD_INPUT_TOKENS로 결정합니다.
+# 개수가 아니라 입력 토큰 목표/하드 상한과 적응형 estimator로 결정합니다.
 _UNBOUNDED_ITEM_LIMIT = 2_147_483_647
+
+ADAPTIVE_GEMINI_BATCH_FEATURE_IDS = frozenset(
+    {
+        "trend_cluster_grouping_v3",
+        "trend_candidate_ai_evaluation_v1",
+        "trend_blog_ai_routing_v1",
+    }
+)
+TOPIC_ANGLE_FEATURE_ID = "trend_topic_angle_batch_v1"
+ADAPTIVE_GEMINI_BATCH_EXCLUDED_FEATURE_IDS = frozenset({TOPIC_ANGLE_FEATURE_ID})
+
+
+def uses_adaptive_gemini_batching(feature_id: str) -> bool:
+    """자동 다중항목 Gemini 기능 중 공통 적응형 입력 예산 적용 여부를 반환합니다."""
+    normalized = str(feature_id or "").strip()
+    return normalized in ADAPTIVE_GEMINI_BATCH_FEATURE_IDS
 
 
 def _restore_token_only_cluster_partition() -> None:
@@ -28,13 +44,19 @@ def _remove_candidate_evaluation_default_item_cap() -> None:
     partition.__kwdefaults__ = keyword_defaults
 
 
-def install_trend_cluster_request_cap_contract() -> None:
-    """레거시 개수 상한을 제거하고 Gemini 요청을 입력 토큰 기준으로만 분할합니다.
+def install_adaptive_gemini_batch_contract() -> None:
+    """3.7 주제방향을 제외한 자동 Gemini 묶음을 같은 입력 토큰 정책으로 맞춥니다.
 
-    함수명은 이미 이 설치 함수를 가져오는 런타임과의 호환을 위해 유지합니다.
-    새 실행에서는 2차 군집과 전체 글감 평가 모두 후보 개수 자체로 요청을 자르지
-    않습니다. 기존 프로세스에 과거 300개 래퍼가 남아 있어도 원래 토큰 분할기를
-    복원합니다.
+    2차 군집·전체 글감 AI 평가·블로그 AI 분류는 같은 전역 estimator/TPM limiter를
+    사용합니다. 성공이 안정적으로 누적되면 estimator가 2%씩 완화되고, 실패·초과·
+    rate limit은 즉시 보수적으로 조정됩니다. 후보 개수 자체는 요청 분할 기준으로
+    사용하지 않습니다. 주제방향 생성 feature는 이 적응형 배치 계약의 적용 대상이
+    아니며 기존 전용 실행·fallback 계약을 그대로 사용합니다.
     """
     _restore_token_only_cluster_partition()
     _remove_candidate_evaluation_default_item_cap()
+
+
+def install_trend_cluster_request_cap_contract() -> None:
+    """과거 설치 함수명 호환용 alias. 새 코드는 적응형 Gemini 배치 계약을 설치합니다."""
+    install_adaptive_gemini_batch_contract()
