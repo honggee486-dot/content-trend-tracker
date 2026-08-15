@@ -31,6 +31,16 @@ def test_scheduler_refresh_reuses_same_ai_postprocessing_wrappers() -> None:
     }
 
 
+def test_background_rebuild_uses_post_clustering_ai_pipeline() -> None:
+    from scripts import process_cluster_backlog
+
+    assert getattr(
+        process_cluster_backlog.run_topic_angles_after_clustering,
+        "_trend_candidate_ai_evaluation_contract",
+        False,
+    ) is True
+
+
 def test_scheduler_gemini_calls_use_common_rate_limit_gateway() -> None:
     from src.services import gemini_service
 
