@@ -112,6 +112,9 @@ if "streamlit" in sys.modules:
     from src.services.topic_angle_candidate_diagnostic_service import (
         install_topic_angle_candidate_diagnostic_contract,
     )
+    from src.services.trend_candidate_scroll_runtime import (
+        install_trend_candidate_scroll_runtime,
+    )
     from src.services.web_update_launch_runtime import (
         install_web_update_launch_contract,
     )
@@ -126,6 +129,9 @@ if "streamlit" in sys.modules:
     install_post_collection_cleanup_contract()
     # 위 래퍼 전체를 실행 ID 문맥으로 감싸 세부 단계를 한 실행으로 묶습니다.
     install_program_log_correlation_contract()
+    # 글감 목록을 보고 있던 탭은 Streamlit rerun·브라우저 새로고침 뒤에도
+    # 페이지와 목록 내부의 마지막 스크롤 위치를 같은 탭에서 복원합니다.
+    install_trend_candidate_scroll_runtime(sys.modules["streamlit"])
     # web_update_ui가 함수를 직접 가져오기 전에 검증형 실행기로 교체합니다.
     install_web_update_launch_contract()
 

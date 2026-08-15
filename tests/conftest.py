@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
+
+# Tests must not inherit a developer-specific Gemini timeout from the protected local .env.
+# Individual timeout tests can still override this baseline with monkeypatch.
+os.environ["GEMINI_TIMEOUT_SECONDS"] = "60"
 
 _MANAGED_APP_ENVIRONMENT_KEYS = (
     "CONTENT_TREND_TRACKER_SUPERVISOR_PID",
