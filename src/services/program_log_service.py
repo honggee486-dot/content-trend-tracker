@@ -19,6 +19,8 @@ _FEATURE_LABELS = {
     "trend_cluster_grouping_v3": "2차 군집",
     "trend_cluster_grouping_v2": "과거 2차 군집",
     "trend_cluster_review_v1": "과거 군집 재검토",
+    "trend_candidate_ai_evaluation_v1": "전체 글감 AI 평가",
+    "trend_blog_ai_routing_v1": "블로그 자동 분류",
 }
 
 _STATUS_LABELS = {
@@ -33,6 +35,8 @@ _STATUS_LABELS = {
     "running": "실행 중",
     "queued": "대기",
     "cache_hit": "캐시",
+    "in_progress": "전송 중",
+    "response_received": "응답 수신",
 }
 
 _EVENT_TYPE_LABELS = {
@@ -104,7 +108,6 @@ def record_program_event(
     con: Any | None = None,
     db_path: str | Path = DEFAULT_DB_PATH,
 ) -> bool:
-    """운영 로그 실패가 실제 작업을 취소하지 않도록 보수적으로 기록합니다."""
     resolved_correlation_id = (
         current_program_log_correlation_id()
         or str(correlation_id or "").strip()
@@ -185,20 +188,30 @@ def list_recent_gemini_calls(
     *,
     limit: int = PROGRAM_LOG_DEFAULT_LIMIT,
 ) -> list[dict[str, Any]]:
+    from src.services.gemini_call_lifecycle_service import (
+        ensure_gemini_call_lifecycle_schema,
+    )
+
+    ensure_gemini_call_lifecycle_schema(con)
     rows = con.execute(
         """
-        SELECT created_at, status, model_name, feature_id, feature_version,
+        SELECT created_at, COALESCE(started_at, created_at) AS started_at,
+               finished_at, COALESCE(rate_limit_wait_seconds, 0) AS rate_limit_wait_seconds,
+               status, model_name, feature_id, feature_version,
                attempt_number, cache_hit, requested_item_count,
                input_tokens, output_tokens, thought_tokens, total_tokens,
                http_status, finish_reason, duration_ms, error_type, error_message
         FROM gemini_api_calls
-        ORDER BY created_at DESC, call_id DESC
+        ORDER BY COALESCE(started_at, created_at) DESC, call_id DESC
         LIMIT ?
         """,
         [_safe_limit(limit)],
     ).fetchall()
     columns = (
         "created_at",
+        "started_at",
+        "finished_at",
+        "rate_limit_wait_seconds",
         "status",
         "model_name",
         "feature_id",

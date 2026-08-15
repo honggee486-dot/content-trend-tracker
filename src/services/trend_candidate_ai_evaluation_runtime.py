@@ -8,9 +8,15 @@ from typing import Any
 
 from src.config import DEFAULT_DB_PATH
 from src.database import connect_database
+from src.services.trend_ai_active_scope_runtime import (
+    install_trend_ai_active_scope_contract,
+)
 from src.services.trend_blog_ai_routing_service import run_trend_blog_ai_routing
 from src.services.trend_candidate_ai_evaluation_service import (
     run_trend_candidate_ai_evaluation,
+)
+from src.services.trend_cluster_request_cap_runtime import (
+    install_trend_cluster_request_cap_contract,
 )
 
 
@@ -73,7 +79,6 @@ def _install_refresh_evaluation(discovery_module: Any) -> None:
             if warning:
                 result.setdefault("warnings", {})["candidate_ai_evaluation"] = warning
         except Exception as exc:
-            # 후처리 실패는 이미 저장된 수집·군집을 취소하지 않습니다.
             result["candidate_ai_evaluation"] = {
                 "status": "unexpected_error",
                 "error_message": str(exc),
@@ -109,7 +114,6 @@ def _install_post_clustering_evaluation() -> None:
 
     @wraps(original)
     def wrapped(job_id: str, *args, **kwargs):
-        # pytest에서는 기존 서비스의 주입 가능한 fake 연결/runner 계약을 그대로 보존합니다.
         if os.environ.get("PYTEST_CURRENT_TEST"):
             return original(job_id, *args, **kwargs)
 
@@ -128,8 +132,6 @@ def _install_post_clustering_evaluation() -> None:
                 }
                 evaluation_warning = str(exc)
 
-            # 저장 자료 재집계의 백그라운드 군집도 최신 수집과 동일하게
-            # 전체 글감 평가 뒤 블로그 분류를 끝내고 주제방향 생성으로 넘어갑니다.
             try:
                 routing, routing_warning = run_trend_blog_ai_routing(db_path)
             except Exception as exc:
@@ -139,7 +141,6 @@ def _install_post_clustering_evaluation() -> None:
                 }
                 routing_warning = str(exc)
 
-        # 평가·블로그 분류의 성공 여부와 무관하게 기존 주제방향 생성은 계속합니다.
         result = original(job_id, *args, **kwargs)
         if isinstance(result, dict) and (evaluation is not None or routing is not None):
             result = dict(result)
@@ -164,10 +165,12 @@ def install_trend_candidate_ai_evaluation_contract(
     if discovery_module is None:
         from src.services import trend_discovery_service as discovery_module
 
+    install_trend_cluster_request_cap_contract()
+    install_trend_ai_active_scope_contract()
+
     _install_refresh_evaluation(discovery_module)
     _install_post_clustering_evaluation()
 
-    # 앱에서는 기존 page_header hook에 비교 패널을 덧붙입니다. CLI/예약 실행은 UI를 로드하지 않습니다.
     if "streamlit" in sys.modules:
         try:
             import src.ui as ui_module
@@ -177,5 +180,4 @@ def install_trend_candidate_ai_evaluation_contract(
 
             install_trend_candidate_ai_evaluation_ui_contract(ui_module)
         except Exception:
-            # UI 보조 기능 실패가 수집·군집 계약 설치를 막지 않게 합니다.
             pass

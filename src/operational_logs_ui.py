@@ -32,7 +32,7 @@ _RUN_TYPE_LABELS = {
     "ranking_rebuild": "저장 자료 정리·순위 재계산",
     "topic_angle_generation": "주제 방향 자동 생성",
 }
-_START_STATUSES = {"started", "clicked", "queued", "running"}
+_START_STATUSES = {"started", "clicked", "queued", "running", "in_progress"}
 _EXECUTION_ID_PATTERN = re.compile(r"(?:^|\s*·\s*)실행 ID\s+\S+")
 
 
@@ -57,6 +57,13 @@ def _format_seconds(duration_ms: Any, *, status: Any = "") -> str:
         return "-"
 
 
+def _format_wait_seconds(value: Any) -> str:
+    try:
+        return f"{max(0.0, float(value or 0.0)):,.2f}"
+    except (TypeError, ValueError):
+        return "-"
+
+
 def _format_item_count(value: Any, *, status: Any = "") -> str:
     if str(status or "").casefold() in _START_STATUSES:
         return "-"
@@ -66,11 +73,21 @@ def _format_item_count(value: Any, *, status: Any = "") -> str:
         return "-"
 
 
+def _format_token_count(value: Any, *, status: Any = "") -> int | str:
+    if str(status or "").casefold() in _START_STATUSES and value is None:
+        return "-"
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return "-"
+
+
 def _gemini_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
-                "시간": _format_time(row.get("created_at")),
+                "전송 시작": _format_time(row.get("started_at") or row.get("created_at")),
+                "완료": _format_time(row.get("finished_at")) if row.get("finished_at") is not None else "-",
                 "상태": (
                     "캐시"
                     if bool(row.get("cache_hit"))
@@ -80,18 +97,39 @@ def _gemini_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
                 "기능": feature_label(row.get("feature_id")),
                 "기능 버전": str(row.get("feature_version") or ""),
                 "시도": int(row.get("attempt_number") or 0),
-                "요청 항목": int(row.get("requested_item_count") or 0),
-                "입력 토큰": int(row.get("input_tokens") or 0),
-                "출력 토큰": int(row.get("output_tokens") or 0),
-                "사고 토큰": int(row.get("thought_tokens") or 0),
-                "총 토큰": int(row.get("total_tokens") or 0),
+                "요청 항목": _format_item_count(
+                    row.get("requested_item_count"),
+                    status=row.get("status"),
+                ),
+                "입력 토큰": _format_token_count(
+                    row.get("input_tokens"),
+                    status=row.get("status"),
+                ),
+                "출력 토큰": _format_token_count(
+                    row.get("output_tokens"),
+                    status=row.get("status"),
+                ),
+                "사고 토큰": _format_token_count(
+                    row.get("thought_tokens"),
+                    status=row.get("status"),
+                ),
+                "총 토큰": _format_token_count(
+                    row.get("total_tokens"),
+                    status=row.get("status"),
+                ),
+                "공통 제한 대기(초)": _format_wait_seconds(
+                    row.get("rate_limit_wait_seconds")
+                ),
                 "HTTP": (
                     ""
                     if row.get("http_status") is None
                     else int(row.get("http_status") or 0)
                 ),
                 "종료 사유": str(row.get("finish_reason") or ""),
-                "시간(초)": _format_seconds(row.get("duration_ms")),
+                "API 시간(초)": _format_seconds(
+                    row.get("duration_ms"),
+                    status=row.get("status"),
+                ),
                 "오류": " · ".join(
                     value
                     for value in (
@@ -252,7 +290,10 @@ def render_operational_logs(st_module: Any) -> None:
 
     with st_module.expander("Gemini 로그 · 최근 100건", expanded=False):
         st_module.caption(
-            "실제 gemini_api_calls 기록의 최신 100건입니다. 요청 본문과 API 키는 표시하거나 프로그램 로그에 복사하지 않습니다."
+            "Gemini 요청은 RPM·TPM 대기가 끝난 뒤 실제 API 전송 직전에 먼저 기록합니다. "
+            "응답이 오면 같은 행에 완료 시각·토큰·상태를 갱신합니다. "
+            "업데이트 전 과거 기록은 기존 저장 시각을 전송 시작 대신 표시할 수 있습니다. "
+            "요청 본문과 API 키는 표시하지 않습니다."
         )
         if gemini_rows:
             st_module.dataframe(
