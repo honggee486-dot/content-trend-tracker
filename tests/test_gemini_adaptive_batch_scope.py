@@ -97,18 +97,22 @@ def test_estimator_feedback_contract_expands_after_successes_and_contracts_on_fa
     assert estimator.tokens_per_character > expanded_ratio
 
 
-def test_latest_data_and_scheduler_install_same_clustering_runtime() -> None:
+def test_latest_data_scheduler_and_backlog_install_same_adaptive_contract() -> None:
     project_root = Path(__file__).resolve().parents[1]
-    dashboard_text = (project_root / "scripts" / "refresh_trends_dashboard.py").read_text(
-        encoding="utf-8"
-    )
-    scheduler_text = (project_root / "scripts" / "refresh_trends_safe.py").read_text(
-        encoding="utf-8-sig"
+    entrypoints = (
+        (project_root / "scripts" / "refresh_trends_dashboard.py", "utf-8"),
+        (project_root / "scripts" / "refresh_trends_safe.py", "utf-8-sig"),
+        (project_root / "scripts" / "process_cluster_backlog.py", "utf-8"),
     )
 
-    for text in (dashboard_text, scheduler_text):
-        assert "install_trend_cluster_runtime_contract" in text
-        assert "install_trend_cluster_runtime_contract()" in text
+    for path, encoding in entrypoints:
+        text = path.read_text(encoding=encoding)
+        adaptive_call = "install_adaptive_gemini_batch_contract()"
+        cluster_call = "install_trend_cluster_runtime_contract()"
+        assert "install_adaptive_gemini_batch_contract" in text
+        assert adaptive_call in text
+        assert cluster_call in text
+        assert text.index(adaptive_call) < text.index(cluster_call)
 
 
 def test_topic_angle_generation_stays_outside_adaptive_batch_scope() -> None:
