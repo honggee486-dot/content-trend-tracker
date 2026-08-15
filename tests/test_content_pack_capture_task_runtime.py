@@ -15,6 +15,18 @@ def _pack() -> dict:
             "memo": "공식 가격 페이지를 확인",
         },
         [],
+        factual_references=[
+            {
+                "reference_id": "ref_pricing",
+                "reference_type": "official",
+                "reference_type_label": "공식 자료",
+                "title": "Official Pricing",
+                "publisher": "Example AI",
+                "url": "https://example.com/official/pricing",
+                "published_at": "2026-08-15",
+                "memo": "모델별 입력·출력 토큰 단가와 과금 단위를 확인",
+            }
+        ],
         audience="AI API 비용을 확인하려는 일반 사용자",
         purpose="공식 가격 근거를 쉽게 비교",
         angle="현재 공식 가격과 과금 단위를 정확히 설명",
