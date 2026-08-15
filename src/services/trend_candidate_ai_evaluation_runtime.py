@@ -8,6 +8,7 @@ from typing import Any
 
 from src.config import DEFAULT_DB_PATH
 from src.database import connect_database
+from src.services.trend_blog_ai_routing_service import run_trend_blog_ai_routing
 from src.services.trend_candidate_ai_evaluation_service import (
     run_trend_candidate_ai_evaluation,
 )
@@ -114,24 +115,42 @@ def _install_post_clustering_evaluation() -> None:
 
         db_path = Path(kwargs.get("db_path") or DEFAULT_DB_PATH).resolve()
         evaluation: dict[str, Any] | None = None
-        warning = ""
+        evaluation_warning = ""
+        routing: dict[str, Any] | None = None
+        routing_warning = ""
         if _post_clustering_job_ready(db_path, str(job_id)):
             try:
-                evaluation, warning = run_trend_candidate_ai_evaluation(db_path)
+                evaluation, evaluation_warning = run_trend_candidate_ai_evaluation(db_path)
             except Exception as exc:
                 evaluation = {
                     "status": "unexpected_error",
                     "error_message": str(exc),
                 }
-                warning = str(exc)
+                evaluation_warning = str(exc)
 
-        # AI 평가의 성공 여부와 무관하게 기존 주제방향 생성은 계속합니다.
+            # 저장 자료 재집계의 백그라운드 군집도 최신 수집과 동일하게
+            # 전체 글감 평가 뒤 블로그 분류를 끝내고 주제방향 생성으로 넘어갑니다.
+            try:
+                routing, routing_warning = run_trend_blog_ai_routing(db_path)
+            except Exception as exc:
+                routing = {
+                    "status": "unexpected_error",
+                    "error_message": str(exc),
+                }
+                routing_warning = str(exc)
+
+        # 평가·블로그 분류의 성공 여부와 무관하게 기존 주제방향 생성은 계속합니다.
         result = original(job_id, *args, **kwargs)
-        if isinstance(result, dict) and evaluation is not None:
+        if isinstance(result, dict) and (evaluation is not None or routing is not None):
             result = dict(result)
-            result["candidate_ai_evaluation"] = evaluation
-            if warning:
-                result["candidate_ai_evaluation_warning"] = warning
+            if evaluation is not None:
+                result["candidate_ai_evaluation"] = evaluation
+                if evaluation_warning:
+                    result["candidate_ai_evaluation_warning"] = evaluation_warning
+            if routing is not None:
+                result["blog_ai_routing"] = routing
+                if routing_warning:
+                    result["blog_ai_routing_warning"] = routing_warning
         return result
 
     wrapped._trend_candidate_ai_evaluation_contract = True  # type: ignore[attr-defined]
