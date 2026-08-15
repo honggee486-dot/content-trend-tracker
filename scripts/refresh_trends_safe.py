@@ -23,6 +23,9 @@ from src.services.program_log_correlation_runtime import (
 from src.services.topic_angle_candidate_diagnostic_service import (
     install_topic_angle_candidate_diagnostic_contract,
 )
+from src.services.trend_cluster_request_cap_runtime import (
+    install_adaptive_gemini_batch_contract,
+)
 from src.services.trend_cluster_runtime_contract import (
     install_trend_cluster_runtime_contract,
 )
@@ -37,6 +40,9 @@ install_program_log_run_lifecycle()
 install_source_collection_logging()
 install_post_collection_cleanup_contract()
 install_program_log_correlation_contract()
+# 예약 프로세스도 3.7 주제방향을 제외한 자동 Gemini 묶음에 225K 목표·245K 하드
+# 상한·250K TPM과 성공/실패 적응형 estimator를 명시적으로 설치합니다.
+install_adaptive_gemini_batch_contract()
 install_trend_cluster_runtime_contract()
 install_precise_trend_stage_logging()
 
