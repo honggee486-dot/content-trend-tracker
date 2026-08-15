@@ -23,6 +23,33 @@ def uses_adaptive_gemini_batching(feature_id: str) -> bool:
     return normalized in ADAPTIVE_GEMINI_BATCH_FEATURE_IDS
 
 
+def adaptive_gemini_batch_policy_snapshot() -> dict[str, Any]:
+    """운영·테스트에서 공통 적응형 입력 예산 계약을 한 번에 확인합니다."""
+    from src.services.trend_cluster_token_runtime import (
+        CLUSTERING_GROWTH_STEP,
+        CLUSTERING_GROWTH_SUCCESS_STREAK,
+        CLUSTERING_HARD_INPUT_TOKENS,
+        CLUSTERING_OVERRUN_FACTOR,
+        CLUSTERING_RATE_LIMIT_FACTOR,
+        CLUSTERING_TARGET_INPUT_TOKENS,
+        CLUSTERING_TPM_LIMIT,
+    )
+
+    return {
+        "target_input_tokens": CLUSTERING_TARGET_INPUT_TOKENS,
+        "hard_input_tokens": CLUSTERING_HARD_INPUT_TOKENS,
+        "tpm_limit": CLUSTERING_TPM_LIMIT,
+        "growth_success_streak": CLUSTERING_GROWTH_SUCCESS_STREAK,
+        "growth_step": CLUSTERING_GROWTH_STEP,
+        "overrun_factor": CLUSTERING_OVERRUN_FACTOR,
+        "rate_limit_factor": CLUSTERING_RATE_LIMIT_FACTOR,
+        "feature_ids": tuple(sorted(ADAPTIVE_GEMINI_BATCH_FEATURE_IDS)),
+        "excluded_feature_ids": tuple(
+            sorted(ADAPTIVE_GEMINI_BATCH_EXCLUDED_FEATURE_IDS)
+        ),
+    }
+
+
 def _restore_token_only_cluster_partition() -> None:
     """이미 설치된 과거 후보 개수 래퍼가 있으면 원래 토큰 분할기로 되돌립니다."""
     from src.services import trend_cluster_sparse_executor as sparse_module
