@@ -54,7 +54,7 @@ def _build_v21_result_payload(*, body_url: str, source_url: str) -> dict:
         "blocks": [
             {
                 "type": "paragraph",
-                "text": f"금융위원회 공식 자료({body_url})*를 기준으로 변경 내용을 확인했습니다.",
+                "text": f"금융위원회 공식 자료({body_url})*",
             }
         ],
         "fact_checks": [
@@ -233,9 +233,7 @@ def test_ai_result_validation_accepts_markdown_wrapped_researched_url() -> None:
     assert parsed.is_valid
     assert checked.is_valid
     assert checked.data is not None
-    assert checked.data["body_markdown"].endswith(
-        f"({source_url})*를 기준으로 변경 내용을 확인했습니다."
-    )
+    assert checked.data["body_markdown"].endswith(f"({source_url})*")
 
 
 def test_ai_result_validation_still_rejects_unknown_markdown_wrapped_url() -> None:
