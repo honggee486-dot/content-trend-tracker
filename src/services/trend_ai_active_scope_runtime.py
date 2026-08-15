@@ -17,17 +17,39 @@ def active_trend_lookback_hours(con: Any) -> int:
         return DEFAULT_ACTIVE_TREND_HOURS
 
 
-def active_trend_cluster_ids(con: Any) -> set[str]:
-    threshold = datetime.now() - timedelta(hours=active_trend_lookback_hours(con))
+def _trend_cluster_columns(con: Any) -> set[str]:
     try:
-        rows = con.execute(
-            """
-            SELECT cluster_id
-            FROM trend_clusters
-            WHERE COALESCE(last_seen_at, first_seen_at) >= ?
-            """,
-            [threshold],
-        ).fetchall()
+        return {
+            str(row[1])
+            for row in con.execute("PRAGMA table_info('trend_clusters')").fetchall()
+        }
+    except Exception:
+        return set()
+
+
+def active_trend_cluster_ids(con: Any) -> set[str]:
+    """현재 분석 시간 범위의 군집 ID를 반환하고 구형 스키마는 기존 동작을 보존합니다."""
+    columns = _trend_cluster_columns(con)
+    if "cluster_id" not in columns:
+        return set()
+
+    threshold = datetime.now() - timedelta(hours=active_trend_lookback_hours(con))
+    if "last_seen_at" in columns and "first_seen_at" in columns:
+        query = "SELECT cluster_id FROM trend_clusters WHERE COALESCE(last_seen_at, first_seen_at) >= ?"
+        params = [threshold]
+    elif "last_seen_at" in columns:
+        query = "SELECT cluster_id FROM trend_clusters WHERE last_seen_at >= ?"
+        params = [threshold]
+    elif "first_seen_at" in columns:
+        query = "SELECT cluster_id FROM trend_clusters WHERE first_seen_at >= ?"
+        params = [threshold]
+    else:
+        # 테스트/구형 DB처럼 시간 컬럼이 아예 없으면 필터 근거가 없으므로 기존 범위를 유지합니다.
+        query = "SELECT cluster_id FROM trend_clusters"
+        params = []
+
+    try:
+        rows = con.execute(query, params).fetchall()
     except Exception:
         return set()
     return {str(row[0] or "").strip() for row in rows if str(row[0] or "").strip()}

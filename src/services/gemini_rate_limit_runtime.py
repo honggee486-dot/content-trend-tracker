@@ -35,9 +35,12 @@ def build_rate_limited_structured_call(
         wait_seconds = 0.0
         if gemini_common_rate_limit_enabled():
             reservation = limiter.reserve(config, request_text)
-            wait_seconds = max(0.0, float(reservation.wait_seconds or 0.0))
+            # 테스트·호환 limiter는 예약 객체에 wait_seconds가 없을 수 있습니다.
+            wait_seconds = max(
+                0.0,
+                float(getattr(reservation, "wait_seconds", 0.0) or 0.0),
+            )
 
-        # 공통 제한기의 대기가 끝난 뒤, 실제 HTTP 호출 직전에 먼저 원장에 남깁니다.
         call_id = ""
         if gemini_call_lifecycle_enabled():
             call_id = begin_gemini_api_call(
@@ -63,10 +66,8 @@ def build_rate_limited_structured_call(
             )
         except Exception as exc:
             mark_gemini_api_provider_complete(call_id, error=exc)
-            # 실패한 요청도 공급자 측에서 RPM/TPM에 포함될 수 있으므로 예약은 유지합니다.
             raise
 
-        # HTTP 응답을 받은 즉시 완료 시각·토큰을 먼저 갱신하고 기능별 후처리와 분리합니다.
         mark_gemini_api_provider_complete(call_id, result=result)
 
         if reservation is not None:
@@ -95,7 +96,6 @@ def install_gemini_common_rate_limit_contract() -> None:
             current_call
         )
 
-    # 다른 서비스가 record_gemini_api_call을 직접 가져가기 전에 설치합니다.
     current_record = gemini_service.record_gemini_api_call
     if not getattr(current_record, "_gemini_call_lifecycle_record", False):
         gemini_service.record_gemini_api_call = build_lifecycle_record_call(current_record)
