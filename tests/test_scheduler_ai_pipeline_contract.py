@@ -31,14 +31,16 @@ def test_scheduler_refresh_reuses_same_ai_postprocessing_wrappers() -> None:
     }
 
 
-def test_background_rebuild_uses_post_clustering_ai_pipeline() -> None:
-    from scripts import process_cluster_backlog
+def test_background_rebuild_source_calls_post_clustering_pipeline() -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    backlog_text = (project_root / "scripts" / "process_cluster_backlog.py").read_text(
+        encoding="utf-8"
+    )
 
-    assert getattr(
-        process_cluster_backlog.run_topic_angles_after_clustering,
-        "_trend_candidate_ai_evaluation_contract",
-        False,
-    ) is True
+    assert "from src.services.post_clustering_topic_angle_service import (" in backlog_text
+    assert "run_topic_angles_after_clustering," in backlog_text
+    assert "if exit_code == 0:" in backlog_text
+    assert "run_topic_angles_after_clustering(" in backlog_text
 
 
 def test_scheduler_gemini_calls_use_common_rate_limit_gateway() -> None:
