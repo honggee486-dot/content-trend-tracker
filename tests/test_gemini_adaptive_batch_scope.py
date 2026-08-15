@@ -118,7 +118,7 @@ def test_estimator_feedback_contract_expands_after_successes_and_contracts_on_fa
     assert estimator.tokens_per_character > expanded_ratio
 
 
-def test_each_adaptive_executor_reserves_tpm_and_feeds_result_back_to_estimator() -> None:
+def test_each_adaptive_executor_wraps_existing_tpm_and_feedback_logic() -> None:
     executors = (
         clustering.execute_sparse_views,
         evaluation.execute_prepared_candidate_ai_evaluation,
@@ -126,7 +126,9 @@ def test_each_adaptive_executor_reserves_tpm_and_feeds_result_back_to_estimator(
     )
 
     for executor in executors:
-        source = inspect.getsource(executor)
+        assert getattr(executor, "_adaptive_next_request", False) is True
+        original = getattr(executor, "_adaptive_next_request_original")
+        source = inspect.getsource(original)
         assert "GLOBAL_TOKEN_ESTIMATOR" in source
         assert "GLOBAL_TPM_LIMITER" in source
         assert "active_limiter.reserve(" in source

@@ -76,12 +76,20 @@ def install_adaptive_gemini_batch_contract() -> None:
 
     2차 군집·전체 글감 AI 평가·블로그 AI 분류는 같은 전역 estimator/TPM limiter를
     사용합니다. 성공이 안정적으로 누적되면 estimator가 2%씩 완화되고, 실패·초과·
-    rate limit은 즉시 보수적으로 조정됩니다. 후보 개수 자체는 요청 분할 기준으로
-    사용하지 않습니다. 주제방향 생성 feature는 이 적응형 배치 계약의 적용 대상이
-    아니며 기존 전용 실행·fallback 계약을 그대로 사용합니다.
+    rate limit은 즉시 보수적으로 조정됩니다. 각 API 요청이 끝날 때마다 남은 후보를
+    갱신된 estimator로 다시 분할하므로 같은 실행의 바로 다음 요청부터 조정값이
+    반영됩니다. 후보 개수 자체는 요청 분할 기준으로 사용하지 않습니다.
+    주제방향 생성 feature는 이 적응형 배치 계약의 적용 대상이 아니며 기존 전용
+    실행·fallback 계약을 그대로 사용합니다.
     """
     _restore_token_only_cluster_partition()
     _remove_candidate_evaluation_default_item_cap()
+
+    from src.services.adaptive_gemini_next_request_runtime import (
+        install_adaptive_next_request_contract,
+    )
+
+    install_adaptive_next_request_contract()
 
 
 def install_trend_cluster_request_cap_contract() -> None:
