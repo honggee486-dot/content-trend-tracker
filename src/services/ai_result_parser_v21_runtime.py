@@ -34,6 +34,7 @@ CHATGPT_CONTENT_REFERENCE_PATTERN = re.compile(
     r"[ \t]*:contentReference\[oaicite:\d+\]\{index=\d+\}",
     re.IGNORECASE,
 )
+MARKDOWN_URL_TRAILING_MARKERS = "*_~`.,;:!?"
 
 
 def _strip_chatgpt_content_references(value: Any) -> Any:
@@ -48,6 +49,26 @@ def _strip_chatgpt_content_references(value: Any) -> Any:
             for key, item in value.items()
         }
     return value
+
+
+def _strip_markdown_url_suffix(value: str) -> str:
+    """Remove only trailing Markdown wrappers around a URL used for validation."""
+    text = str(value or "")
+    while True:
+        previous = text
+        text = text.rstrip(MARKDOWN_URL_TRAILING_MARKERS)
+        while text.endswith(")") and text.count(")") > text.count("("):
+            text = text[:-1].rstrip(MARKDOWN_URL_TRAILING_MARKERS)
+        if text == previous:
+            return text
+
+
+def _sanitize_body_urls_for_validation(parser_module, body: str) -> str:
+    """Strip Markdown-only URL suffixes without mutating the stored AI body."""
+    return parser_module.URL_PATTERN.sub(
+        lambda match: _strip_markdown_url_suffix(match.group(0)),
+        body,
+    )
 
 
 def _validate_seo(parser_module, value: Any, errors: list[str], warnings: list[str]) -> dict[str, Any]:
@@ -228,7 +249,7 @@ def _attach_v21_image_metadata(
 
 
 def install_ai_result_parser_v21_contract() -> None:
-    """Add strict schema 2.1 SEO/free-image validation while preserving 1.0/2.0."""
+    """Add schema 2.1 validation and shared Markdown-safe source checks."""
     import src.services.ai_result_parser as parser_module
 
     current = parser_module.parse_ai_result
@@ -286,3 +307,36 @@ def install_ai_result_parser_v21_contract() -> None:
 
     parse_ai_result._seo_free_image_v21_wrapper = True  # type: ignore[attr-defined]
     parser_module.parse_ai_result = parse_ai_result
+
+    original_validate = parser_module.validate_ai_result_against_references
+
+    def validate_ai_result_against_references(result, references):
+        if result.data is None:
+            return original_validate(result, references)
+
+        body = result.data.get("body_markdown")
+        if not isinstance(body, str):
+            return original_validate(result, references)
+
+        sanitized_body = _sanitize_body_urls_for_validation(parser_module, body)
+        if sanitized_body == body:
+            return original_validate(result, references)
+
+        validation_data = deepcopy(result.data)
+        validation_data["body_markdown"] = sanitized_body
+        validation_result = parser_module.ParseResult(
+            validation_data,
+            result.json_text,
+            list(result.errors),
+            list(result.warnings),
+        )
+        checked = original_validate(validation_result, references)
+        return parser_module.ParseResult(
+            result.data,
+            result.json_text,
+            checked.errors,
+            checked.warnings,
+        )
+
+    validate_ai_result_against_references._markdown_url_suffix_wrapper = True  # type: ignore[attr-defined]
+    parser_module.validate_ai_result_against_references = validate_ai_result_against_references
