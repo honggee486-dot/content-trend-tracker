@@ -15,6 +15,9 @@ from src.services.program_log_correlation_runtime import (
 from src.services.topic_angle_candidate_diagnostic_service import (
     install_topic_angle_candidate_diagnostic_contract,
 )
+from src.services.trend_cluster_request_cap_runtime import (
+    install_adaptive_gemini_batch_contract,
+)
 from src.services.trend_cluster_runtime_contract import (
     install_trend_cluster_runtime_contract,
 )
@@ -23,6 +26,9 @@ from src.services.trend_cluster_runtime_contract import (
 install_program_logging_contract()
 install_topic_angle_candidate_diagnostic_contract()
 install_program_log_correlation_contract()
+# 별도 백로그 프로세스도 3.7 주제방향을 제외한 자동 Gemini 묶음에 같은
+# 적응형 입력 토큰 계약을 먼저 적용합니다.
+install_adaptive_gemini_batch_contract()
 install_trend_cluster_runtime_contract()
 
 from src.database import init_database

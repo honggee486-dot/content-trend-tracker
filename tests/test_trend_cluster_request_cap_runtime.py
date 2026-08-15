@@ -5,7 +5,12 @@ from src.services.trend_candidate_ai_evaluation_service import (
     partition_candidate_evaluations,
 )
 from src.services.trend_cluster_request_cap_runtime import (
+    ADAPTIVE_GEMINI_BATCH_EXCLUDED_FEATURE_IDS,
+    ADAPTIVE_GEMINI_BATCH_FEATURE_IDS,
+    TOPIC_ANGLE_FEATURE_ID,
+    install_adaptive_gemini_batch_contract,
     install_trend_cluster_request_cap_contract,
+    uses_adaptive_gemini_batching,
 )
 
 
@@ -33,8 +38,23 @@ def _candidate(index: int) -> dict[str, object]:
     }
 
 
+def test_adaptive_batch_scope_includes_all_automatic_multi_item_features() -> None:
+    assert ADAPTIVE_GEMINI_BATCH_FEATURE_IDS == {
+        "trend_cluster_grouping_v3",
+        "trend_candidate_ai_evaluation_v1",
+        "trend_blog_ai_routing_v1",
+    }
+    assert all(uses_adaptive_gemini_batching(value) for value in ADAPTIVE_GEMINI_BATCH_FEATURE_IDS)
+
+
+def test_topic_angle_feature_is_explicitly_excluded_from_adaptive_batching() -> None:
+    assert TOPIC_ANGLE_FEATURE_ID == "trend_topic_angle_batch_v1"
+    assert ADAPTIVE_GEMINI_BATCH_EXCLUDED_FEATURE_IDS == {TOPIC_ANGLE_FEATURE_ID}
+    assert uses_adaptive_gemini_batching(TOPIC_ANGLE_FEATURE_ID) is False
+
+
 def test_candidate_evaluation_does_not_split_at_120_items_when_tokens_fit() -> None:
-    install_trend_cluster_request_cap_contract()
+    install_adaptive_gemini_batch_contract()
     candidates = [_candidate(index) for index in range(1, 401)]
 
     chunks, oversized = partition_candidate_evaluations(
