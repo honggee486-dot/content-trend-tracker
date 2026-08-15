@@ -15,6 +15,9 @@ install_gemini_common_rate_limit_contract()
 from src.services.ai_result_parser_v21_runtime import (
     install_ai_result_parser_v21_contract,
 )
+from src.services.content_pack_capture_task_runtime import (
+    install_content_pack_capture_task_contract,
+)
 from src.services.content_pack_freshness_review_runtime import (
     install_content_pack_freshness_review_contract,
 )
@@ -50,6 +53,9 @@ from src.services.trend_source_visibility_policy_diagnostic_runtime import (
 # 새 AI 요청서의 SEO·무료 이미지 2중 확인 schema 2.1을 검사하면서
 # 기존 저장 결과의 1.0·2.0 파싱 호환성은 그대로 유지합니다.
 install_ai_result_parser_v21_contract()
+# 새 schema 2.1 요청서는 공식 화면 캡처가 유용한 근거를 선별하고,
+# 실제 공식 링크·캡처 범위·사용자 작업을 이미지 위치마다 함께 남깁니다.
+install_content_pack_capture_task_contract()
 # 모든 새 AI 요청서는 실제 답변 시점의 현재 날짜와 최신 웹 검색을 기준으로 삼고,
 # 초안 작성 뒤 세 번의 추가 웹 재검증을 끝낸 뒤에만 최종 JSON을 출력합니다.
 install_content_pack_freshness_review_contract()
