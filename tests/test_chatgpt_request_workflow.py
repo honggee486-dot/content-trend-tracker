@@ -1,6 +1,11 @@
+import json
 from datetime import date
 from pathlib import Path
 
+from src.services.ai_result_parser import (
+    parse_ai_result,
+    validate_ai_result_against_references,
+)
 from src.services.content_pack_freshness_review_runtime import (
     build_latest_research_review_section,
     ensure_latest_research_review_prompt,
@@ -31,6 +36,45 @@ def _build_prompt() -> str:
         fact_check_items="시행일 확인\n소득 기준 확인",
     )
     return pack["prompt_text"]
+
+
+def _build_v21_result_payload(*, body_url: str, source_url: str) -> dict:
+    return {
+        "schema_version": "2.1",
+        "title": "정책대출 결혼 페널티 변경",
+        "summary": "정책 변경 핵심을 정리합니다.",
+        "category": "정책",
+        "tags": ["정책대출", "결혼 페널티"],
+        "seo": {
+            "primary_keyword": "정책대출 결혼 페널티",
+            "secondary_keywords": ["신혼부부 정책대출"],
+            "search_intent": "정책대출 소득 기준 변경 확인",
+            "meta_description": "정책대출 결혼 페널티 변경 내용을 공식 자료 기준으로 정리합니다.",
+        },
+        "blocks": [
+            {
+                "type": "paragraph",
+                "text": f"금융위원회 공식 자료({body_url})*를 기준으로 변경 내용을 확인했습니다.",
+            }
+        ],
+        "fact_checks": [
+            {
+                "claim": "정책대출 소득 기준이 변경됩니다.",
+                "status": "verified",
+                "reason": "공식 자료 확인",
+                "source_ids": ["R1"],
+            }
+        ],
+        "sources": [
+            {
+                "id": "R1",
+                "title": "부동산 시장 안정을 위한 금융 종합대책",
+                "publisher": "금융위원회",
+                "url": source_url,
+                "published_at": "2026-08-13",
+            }
+        ],
+    }
 
 
 def test_chatgpt_request_button_copies_prompt_and_opens_chatgpt() -> None:
@@ -174,3 +218,37 @@ def test_ai_request_forbids_ui_citation_markers_in_final_json() -> None:
     assert "내부 citation token" in prompt
     assert "sources의 S1, S2, R1, R2 형식 ID와 fact_checks.source_ids만 사용" in prompt
     assert "UI 내부 인용 마커를 S/R 출처 ID로 임의 변환하거나 추측하지 않습니다" in prompt
+
+
+def test_ai_result_validation_accepts_markdown_wrapped_researched_url() -> None:
+    source_url = (
+        "https://www.fsc.go.kr/comm/getFile?fileNo=3&fileTy=ATTACH"
+        "&srvcld=BBSTY1&upperNo=87517"
+    )
+    payload = _build_v21_result_payload(body_url=source_url, source_url=source_url)
+
+    parsed = parse_ai_result(json.dumps(payload, ensure_ascii=False))
+    checked = validate_ai_result_against_references(parsed, [])
+
+    assert parsed.is_valid
+    assert checked.is_valid
+    assert checked.data is not None
+    assert checked.data["body_markdown"].endswith(
+        f"({source_url})*를 기준으로 변경 내용을 확인했습니다."
+    )
+
+
+def test_ai_result_validation_still_rejects_unknown_markdown_wrapped_url() -> None:
+    source_url = (
+        "https://www.fsc.go.kr/comm/getFile?fileNo=3&fileTy=ATTACH"
+        "&srvcld=BBSTY1&upperNo=87517"
+    )
+    unknown_url = "https://invented.example/fake"
+    payload = _build_v21_result_payload(body_url=unknown_url, source_url=source_url)
+
+    parsed = parse_ai_result(json.dumps(payload, ensure_ascii=False))
+    checked = validate_ai_result_against_references(parsed, [])
+
+    assert parsed.is_valid
+    assert not checked.is_valid
+    assert any(unknown_url in error for error in checked.errors)
