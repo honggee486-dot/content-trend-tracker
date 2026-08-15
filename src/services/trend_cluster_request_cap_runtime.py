@@ -1,68 +1,40 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Sequence
+from typing import Any
 
-MAX_CANDIDATES_PER_GEMINI_CLUSTER_REQUEST = 300
-
-
-def build_candidate_capped_partition(
-    original: Callable[..., tuple[list[Any], set[int]]],
-    *,
-    max_candidates: int = MAX_CANDIDATES_PER_GEMINI_CLUSTER_REQUEST,
-) -> Callable[..., tuple[list[Any], set[int]]]:
-    """기존 토큰 분할을 유지한 채 너무 큰 후보 묶음만 더 잘게 나눕니다."""
-    bounded_max = max(1, int(max_candidates))
-
-    def wrapped(
-        numbered_candidates: Sequence[tuple[int, dict[str, Any]]],
-        *,
-        view: str,
-        batch_id: str,
-        estimator: Any,
-        target_tokens: int | None = None,
-    ) -> tuple[list[Any], set[int]]:
-        call_kwargs: dict[str, Any] = {
-            "view": view,
-            "batch_id": batch_id,
-            "estimator": estimator,
-        }
-        if target_tokens is not None:
-            call_kwargs["target_tokens"] = int(target_tokens)
-        chunks, oversized = original(numbered_candidates, **call_kwargs)
-        if not chunks or all(len(chunk.candidates) <= bounded_max for chunk in chunks):
-            return chunks, oversized
-
-        from src.services.trend_cluster_sparse_executor import RequestChunk
-        from src.services.trend_cluster_sparse_protocol import build_sparse_request_text
-
-        result: list[Any] = []
-        for chunk in chunks:
-            rows = list(chunk.candidates)
-            for offset in range(0, len(rows), bounded_max):
-                selected = rows[offset : offset + bounded_max]
-                request_id = f"{batch_id}:{view}:{len(result) + 1:04d}"
-                request_text = build_sparse_request_text(request_id, view, selected)
-                result.append(
-                    RequestChunk(
-                        view=view,
-                        batch_id=request_id,
-                        candidates=tuple(selected),
-                        request_text=request_text,
-                        estimated_tokens=estimator.estimate_text(request_text),
-                    )
-                )
-        return result, oversized
-
-    setattr(wrapped, "_gemini_cluster_candidate_cap", True)
-    setattr(wrapped, "_gemini_cluster_candidate_cap_original", original)
-    return wrapped
+# 과거 후보 개수 상한과 호환하기 위한 충분히 큰 값입니다. 실제 요청 분할은
+# 개수가 아니라 CLUSTERING_TARGET_INPUT_TOKENS / HARD_INPUT_TOKENS로 결정합니다.
+_UNBOUNDED_ITEM_LIMIT = 2_147_483_647
 
 
-def install_trend_cluster_request_cap_contract() -> None:
-    """CLI·예약·Streamlit의 2차 군집에 같은 300개 후보 상한을 적용합니다."""
+def _restore_token_only_cluster_partition() -> None:
+    """이미 설치된 과거 후보 개수 래퍼가 있으면 원래 토큰 분할기로 되돌립니다."""
     from src.services import trend_cluster_sparse_executor as sparse_module
 
     current = sparse_module.partition_for_view
-    if getattr(current, "_gemini_cluster_candidate_cap", False):
-        return
-    sparse_module.partition_for_view = build_candidate_capped_partition(current)
+    original = getattr(current, "_gemini_cluster_candidate_cap_original", None)
+    if callable(original):
+        sparse_module.partition_for_view = original
+
+
+def _remove_candidate_evaluation_default_item_cap() -> None:
+    """전체 글감 평가의 기본 120개 상한을 제거하고 입력 토큰 예산만 사용합니다."""
+    from src.services import trend_candidate_ai_evaluation_service as evaluation_module
+
+    evaluation_module.MAX_ITEMS_PER_REQUEST = _UNBOUNDED_ITEM_LIMIT
+    partition = evaluation_module.partition_candidate_evaluations
+    keyword_defaults: dict[str, Any] = dict(partition.__kwdefaults__ or {})
+    keyword_defaults["max_items_per_request"] = _UNBOUNDED_ITEM_LIMIT
+    partition.__kwdefaults__ = keyword_defaults
+
+
+def install_trend_cluster_request_cap_contract() -> None:
+    """레거시 개수 상한을 제거하고 Gemini 요청을 입력 토큰 기준으로만 분할합니다.
+
+    함수명은 이미 이 설치 함수를 가져오는 런타임과의 호환을 위해 유지합니다.
+    새 실행에서는 2차 군집과 전체 글감 평가 모두 후보 개수 자체로 요청을 자르지
+    않습니다. 기존 프로세스에 과거 300개 래퍼가 남아 있어도 원래 토큰 분할기를
+    복원합니다.
+    """
+    _restore_token_only_cluster_partition()
+    _remove_candidate_evaluation_default_item_cap()
