@@ -12,6 +12,33 @@ def _candidate_id(candidate: dict[str, Any]) -> str:
     return str(candidate.get("candidate_id") or candidate.get("cluster_id") or "").strip()
 
 
+def _prepared_target_tokens(preparation: Any, default_target: int) -> int:
+    """기존 준비 단계가 더 작은 명시 목표로 나뉜 경우 그 상한을 보존합니다.
+
+    과거 Preparation에는 target_tokens 필드가 없어서, 둘 이상의 준비 묶음이 기본
+    225K의 절반보다 훨씬 작으면 테스트·진단 등에서 더 작은 목표를 명시한 것으로
+    간주합니다. 가장 큰 준비 묶음에 5% 여유만 주어 원래 목표를 근사하고, 운영의
+    정상 225K 준비 묶음은 언제나 기본 목표를 그대로 사용합니다.
+    """
+    chunks = tuple(getattr(preparation, "chunks", ()) or ())
+    if len(chunks) < 2:
+        return int(default_target)
+    estimates = [
+        int(getattr(chunk, "estimated_tokens", 0) or 0)
+        for chunk in chunks
+        if int(getattr(chunk, "estimated_tokens", 0) or 0) > 0
+    ]
+    if not estimates:
+        return int(default_target)
+    largest = max(estimates)
+    if largest >= int(default_target) // 2:
+        return int(default_target)
+    return min(
+        int(default_target),
+        largest + max(64, int(round(largest * 0.05))),
+    )
+
+
 def build_adaptive_candidate_evaluation_executor(
     original: Callable[..., Any],
     evaluation_module: Any,
@@ -26,6 +53,10 @@ def build_adaptive_candidate_evaluation_executor(
             return original(preparation, *args, **kwargs)
 
         estimator = kwargs.get("estimator") or evaluation_module.GLOBAL_TOKEN_ESTIMATOR
+        target_tokens = _prepared_target_tokens(
+            preparation,
+            evaluation_module.CLUSTERING_TARGET_INPUT_TOKENS,
+        )
         call_kwargs = dict(kwargs)
         call_kwargs["estimator"] = estimator
         call_kwargs["progress_callback"] = None
@@ -48,6 +79,7 @@ def build_adaptive_candidate_evaluation_executor(
             chunks, dynamic_oversized = evaluation_module.partition_candidate_evaluations(
                 remaining,
                 estimator=estimator,
+                target_tokens=target_tokens,
             )
             if dynamic_oversized:
                 dynamic_set = {str(value) for value in dynamic_oversized if str(value)}
@@ -62,6 +94,7 @@ def build_adaptive_candidate_evaluation_executor(
                 chunks, _ = evaluation_module.partition_candidate_evaluations(
                     remaining,
                     estimator=estimator,
+                    target_tokens=target_tokens,
                 )
             if not chunks:
                 break
@@ -151,6 +184,10 @@ def build_adaptive_blog_routing_executor(
             return original(preparation, *args, **kwargs)
 
         estimator = kwargs.get("estimator") or routing_module.GLOBAL_TOKEN_ESTIMATOR
+        target_tokens = _prepared_target_tokens(
+            preparation,
+            routing_module.CLUSTERING_TARGET_INPUT_TOKENS,
+        )
         call_kwargs = dict(kwargs)
         call_kwargs["estimator"] = estimator
         call_kwargs["progress_callback"] = None
@@ -181,6 +218,7 @@ def build_adaptive_blog_routing_executor(
             chunks, dynamic_oversized = routing_module.partition_blog_route_candidates(
                 remaining,
                 estimator=estimator,
+                target_tokens=target_tokens,
             )
             if dynamic_oversized:
                 dynamic_set = {str(value) for value in dynamic_oversized if str(value)}
@@ -195,6 +233,7 @@ def build_adaptive_blog_routing_executor(
                 chunks, _ = routing_module.partition_blog_route_candidates(
                     remaining,
                     estimator=estimator,
+                    target_tokens=target_tokens,
                 )
             if not chunks:
                 break
@@ -310,6 +349,12 @@ def build_adaptive_sparse_view_executor(
             if sparse_module.clean_text(candidate.get("candidate_id"))
         }
         views = tuple(sparse_module.CLUSTERING_ACTIVE_VIEWS)
+        view_labels = {
+            "title": "제목",
+            "event": "사건",
+            "identity": "식별",
+            "existing": "기존 군집",
+        }
         total_pairs = 0
         for view in views:
             if view == "existing":
@@ -336,6 +381,7 @@ def build_adaptive_sparse_view_executor(
         }
 
         for view in views:
+            view_label = view_labels.get(view, view)
             remaining = [
                 candidate
                 for candidate in candidate_by_id.values()
@@ -384,7 +430,7 @@ def build_adaptive_sparse_view_executor(
                 if callable(progress_callback):
                     progress_callback(
                         min(1.0, processed_pairs / total_pairs),
-                        f"Flash-Lite 2차 군집 [{view} 요청 {request_number}] 요청 중 ({len(subset):,}개)",
+                        f"Flash-Lite 2차 군집 [{view_label} 요청 {request_number}] 요청 중 ({len(subset):,}개)",
                     )
 
                 with _CLUSTER_VIEW_LOCK:
@@ -405,7 +451,7 @@ def build_adaptive_sparse_view_executor(
                 if callable(progress_callback):
                     progress_callback(
                         min(1.0, processed_pairs / total_pairs),
-                        f"Flash-Lite 2차 군집 [{view} 요청 {request_number}] 완료",
+                        f"Flash-Lite 2차 군집 [{view_label} 요청 {request_number}] 완료",
                     )
 
         return sparse_module.SparseViewExecution(
