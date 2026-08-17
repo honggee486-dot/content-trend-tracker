@@ -194,6 +194,52 @@ def test_ai_request_requires_three_post_draft_web_rechecks_before_final_json() -
     assert "추측해서 verified로 바꾸지 않습니다" in prompt
 
 
+def test_ai_request_treats_fact_checks_as_final_audit_results() -> None:
+    prompt = _build_prompt()
+
+    assert "[최종 fact_checks 상태 결정 규칙]" in prompt
+    assert "나중에 확인할 할 일 목록" in prompt
+    assert "중간 단계의 needs_verification 후보 상태를 그대로 복사하지 않습니다" in prompt
+    assert "출처가 주장 전체를 직접 확인하면 needs_verification으로 남기지 않습니다" in prompt
+    assert "정책·금융 글의 시행일·적용일·소득·자산·금액·대상·제외 조건" in prompt
+
+    example = prompt.split("[출력 JSON 예시]", 1)[1]
+    assert '"claim": "공식 자료로 확인된 구체적 주장"' in example
+    assert '"status": "verified"' in example
+    assert '"status": "needs_verification"' not in example
+
+
+def test_saved_request_refreshes_legacy_fact_check_example() -> None:
+    legacy = """기존 요청서
+
+[SEO 필수 규칙]
+- 기존 규칙
+
+[출력 JSON 예시]
+{
+  "fact_checks": [
+    {
+      "claim": "확인이 필요한 주장",
+      "status": "needs_verification",
+      "reason": "확인이 필요한 이유",
+      "source_ids": ["S1"]
+    }
+  ]
+}
+"""
+
+    refreshed = ensure_latest_research_review_prompt(
+        legacy,
+        reference_date=date(2026, 8, 17),
+    )
+    example = refreshed.split("[출력 JSON 예시]", 1)[1]
+
+    assert '"claim": "공식 자료로 확인된 구체적 주장"' in example
+    assert '"status": "verified"' in example
+    assert '"reason": "S1의 공식 자료로 직접 확인"' in example
+    assert '"status": "needs_verification"' not in example
+
+
 def test_ai_request_rechecks_natural_human_editing_quality_without_fake_errors() -> None:
     prompt = _build_prompt()
 

@@ -11,6 +11,7 @@ _LEGACY_RESEARCH_REVIEW_MARKERS = (
     "[현재 날짜·최신 검색·2중 재검증 필수]",
 )
 _SEO_MARKER = "[SEO 필수 규칙]"
+_OUTPUT_EXAMPLE_MARKER = "[출력 JSON 예시]"
 
 
 def build_latest_research_review_section(
@@ -85,11 +86,16 @@ def build_latest_research_review_section(
 - 핵심을 늦게 말하는 도입, 불필요하게 완벽한 대칭 구조, 같은 주장 반복, 문단마다 억지로 붙인 결론, 정보 가치 없이 매끄럽기만 한 문장, 과도한 소제목·목록·요약을 제거하거나 자연스럽게 다듬습니다.
 - 사실 정확성을 위해 필요한 딱딱한 표현과 단순히 기계적으로 보이는 문체를 구분하고, 사실·수치·출처를 바꾸지 않는 범위에서 후자만 수정합니다.
 
-[최종 needs_verification 처리 규칙]
-- 최종 JSON의 needs_verification은 최초 조사와 1차·2차·3차 재검증을 모두 수행했음에도 현재 공개된 신뢰할 수 있는 자료만으로 확정할 수 없는 항목에만 사용합니다.
+[최종 fact_checks 상태 결정 규칙]
+- 최종 JSON의 fact_checks는 `나중에 확인할 할 일 목록`이 아니라 세 차례 재검증까지 끝낸 최종 사실 감사 결과입니다.
+- 최종 JSON을 만들기 직전에 최종 본문에 실제로 남아 있는 핵심 사실을 기준으로 fact_checks를 다시 정리하고, 중간 단계의 needs_verification 후보 상태를 그대로 복사하지 않습니다.
+- 공식 1차 출처나 신뢰할 수 있는 조사 출처가 주장 전체를 직접 뒷받침하면 status=`verified`로 기록하고 실제 source_ids를 연결합니다.
+- needs_verification은 최초 조사와 1차·2차·3차 재검증을 모두 수행했음에도 현재 공개된 신뢰할 수 있는 자료만으로 주장의 필요한 부분을 확정할 수 없는 경우에만 사용합니다.
+- source_ids가 있는데도 needs_verification을 유지한다면 reason에 그 출처가 무엇까지 확인하고 무엇을 확인하지 못하는지 구체적으로 적습니다. 출처가 주장 전체를 직접 확인하면 needs_verification으로 남기지 않습니다.
+- 정책·금융 글의 시행일·적용일·소득·자산·금액·대상·제외 조건처럼 독자 판단에 직접 영향을 주는 핵심 사실은 최종 상태를 정하기 전에 공식 기관 자료를 우선해 항목별로 다시 검색합니다.
 - 검색을 생략했거나 확인 가능한 공식 자료를 충분히 찾지 않은 상태에서 needs_verification으로 넘기지 않습니다.
-- 끝까지 확인되지 않은 비핵심 주장은 본문에서 제거하고, 글에 반드시 필요한 주장은 불확실성을 본문에 명확히 표시한 상태로 needs_verification을 유지합니다.
-- 확인 근거가 확보된 항목은 verified로 변경하고 실제 source_ids를 연결합니다.
+- 끝까지 확인되지 않은 비핵심 주장은 본문과 fact_checks에서 제거합니다. 글에 반드시 필요한 주장은 불확실성을 본문에 명확히 표시하고, 확인되지 않은 범위만 needs_verification으로 남깁니다.
+- 확인 근거가 확보된 항목은 verified로 변경하며, 본문에서 삭제한 주장을 fact_checks에 남기지 않습니다.
 
 [최종 JSON 인용·출력 정리 규칙]
 - 최종 JSON의 어떤 문자열에도 ChatGPT, Gemini 또는 검색 UI가 사용하는 내부 인용 마커를 포함하지 않습니다.
@@ -110,6 +116,30 @@ def _find_review_marker_index(text: str) -> int:
     return min(indexes) if indexes else -1
 
 
+def _refresh_fact_check_example(text: str) -> str:
+    marker_index = text.find(_OUTPUT_EXAMPLE_MARKER)
+    if marker_index < 0:
+        return text
+    before = text[:marker_index]
+    example = text[marker_index:]
+    example = example.replace(
+        '"claim": "확인이 필요한 주장"',
+        '"claim": "공식 자료로 확인된 구체적 주장"',
+        1,
+    )
+    example = example.replace(
+        '"status": "needs_verification"',
+        '"status": "verified"',
+        1,
+    )
+    example = example.replace(
+        '"reason": "확인이 필요한 이유"',
+        '"reason": "S1의 공식 자료로 직접 확인"',
+        1,
+    )
+    return before + example
+
+
 def ensure_latest_research_review_prompt(
     prompt: object,
     *,
@@ -123,15 +153,18 @@ def ensure_latest_research_review_prompt(
         if seo_index >= 0:
             before = text[:marker_index].rstrip()
             after = text[seo_index:].lstrip()
-            return f"{before}\n\n{section}\n{after}"
-        return f"{text[:marker_index].rstrip()}\n\n{section}\n"
-
-    seo_index = text.find(_SEO_MARKER)
-    if seo_index >= 0:
-        before = text[:seo_index].rstrip()
-        after = text[seo_index:].lstrip()
-        return f"{before}\n\n{section}\n{after}"
-    return f"{text.rstrip()}\n\n{section}\n"
+            refreshed = f"{before}\n\n{section}\n{after}"
+        else:
+            refreshed = f"{text[:marker_index].rstrip()}\n\n{section}\n"
+    else:
+        seo_index = text.find(_SEO_MARKER)
+        if seo_index >= 0:
+            before = text[:seo_index].rstrip()
+            after = text[seo_index:].lstrip()
+            refreshed = f"{before}\n\n{section}\n{after}"
+        else:
+            refreshed = f"{text.rstrip()}\n\n{section}\n"
+    return _refresh_fact_check_example(refreshed)
 
 
 def _refresh_prompt_record(record):
@@ -146,6 +179,17 @@ def _refresh_prompt_record(record):
 
 def install_content_pack_freshness_review_contract() -> None:
     content_pack_module = importlib.import_module("src.services.content_pack_service")
+    example = getattr(content_pack_module, "OUTPUT_SCHEMA_EXAMPLE", None)
+    if isinstance(example, dict):
+        example["fact_checks"] = [
+            {
+                "claim": "공식 자료로 확인된 구체적 주장",
+                "status": "verified",
+                "reason": "S1의 공식 자료로 직접 확인",
+                "source_ids": ["S1"],
+            }
+        ]
+
     build_target: Callable[..., str] = content_pack_module.build_ai_prompt
     if getattr(build_target, "_latest_research_review_wrapper", False):
         return
