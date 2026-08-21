@@ -24,6 +24,9 @@ from src.services.content_pack_capture_schema_runtime import (
 from src.services.content_pack_freshness_review_runtime import (
     install_content_pack_freshness_review_contract,
 )
+from src.services.content_pack_writing_mode_runtime import (
+    install_content_pack_writing_mode_contract,
+)
 from src.services.portal_full_window_analysis_runtime import (
     install_portal_full_window_analysis_contract,
 )
@@ -32,6 +35,9 @@ from src.services.topic_angle_model_fallback_runtime import (
 )
 from src.services.topic_angle_partial_recovery_runtime import (
     install_topic_angle_partial_recovery_contract,
+)
+from src.services.topic_angle_writing_mode_runtime import (
+    install_topic_angle_writing_mode_contract,
 )
 from src.services.trend_blog_ai_routing_runtime import (
     install_trend_blog_ai_routing_contract,
@@ -70,6 +76,14 @@ install_portal_full_window_analysis_contract()
 # Gemini 3.7 Flash 주제 방향은 같은 요청을 자동 재시도하지 않고, 서비스 오류·
 # 타임아웃·429 rate limit·일일 quota 소진이면 Gemini 3.6 Flash로 한 번 fallback합니다.
 install_topic_angle_model_fallback_contract()
+# HTTP 200 부분 응답은 기존 유효 결과를 유지하면서 누락·검증 탈락 ID만 한 번
+# 보강하고, 보강 요청도 실제 요청 수량으로 Gemini 원장에 기록합니다.
+install_topic_angle_partial_recovery_contract()
+# 주제 방향 생성 요청에 모델명이 아닌 자동/수동 작성 추천을 함께 저장하고,
+# 판정이 없거나 애매한 기존 결과는 안전하게 수동 추천으로 해석합니다.
+install_topic_angle_writing_mode_contract()
+# AI 요청서 기본값에도 저장된 자동/수동 추천과 이유를 전달합니다.
+install_content_pack_writing_mode_contract()
 # 강한 YouTube·Google Trends·위키 신호는 모든 실행 경로에서 같은 기준으로
 # 추천이 아닌 검토 후보까지만 승격합니다. 사실 근거 안전장치는 그대로 유지합니다.
 install_trend_source_review_contract()
@@ -82,9 +96,6 @@ install_refresh_clustering_job_history_contract()
 # 저장이 끝난 최종 추천·검토 글감은 자료 검토용 Gemini 모델로 의미 기반 블로그를
 # 한 번에 분류하되 입력 토큰 예산을 채우면 다음 묶음으로 넘기고 결과를 재사용합니다.
 install_trend_blog_ai_routing_contract()
-# HTTP 200 부분 응답은 기존 유효 결과를 유지하면서 누락·검증 탈락 ID만 한 번
-# 보강하고, 보강 요청도 실제 요청 수량으로 Gemini 원장에 기록합니다.
-install_topic_angle_partial_recovery_contract()
 # P2 군집 진단도 Streamlit 여부와 무관하게 현재 토큰 분할 스냅샷 계약을 사용하고,
 # 과거 고정 후보 수 작업 이력은 기존 방식으로 읽을 수 있게 유지합니다.
 install_trend_clustering_diagnostic_contract()
@@ -169,6 +180,9 @@ if "streamlit" in sys.modules:
     from src.services.content_pack_automatic_writing_model_ui_runtime import (
         install_automatic_writing_model_settings_runtime,
     )
+    from src.services.content_pack_writing_mode_runtime import (
+        install_content_pack_writing_mode_ui_runtime,
+    )
     from src.trend_candidate_blog_recommendation_ui import (
         install_trend_candidate_blog_recommendation_ui,
     )
@@ -178,6 +192,8 @@ if "streamlit" in sys.modules:
 
     # AI 요청서 본문 폭과 ChatGPT 수동 전달 버튼의 배치를 현재 실사용 화면에 맞춥니다.
     install_content_pack_request_layout_runtime(_ui_module)
+    # 주제 방향의 자동/수동 추천을 AI 요청서 설정 앞에 표시하고 사용자가 반대로 선택할 수 있게 합니다.
+    install_content_pack_writing_mode_ui_runtime(_ui_module)
     # AI 결과 단계 버튼·편집 저장 규칙·HTML 미리보기는 기존 app 흐름을 보존한 채 보정합니다.
     install_content_workflow_ui_runtime(_ui_module)
     # 자동 작성 모델 목록·1~4순위·1시간/24시간 lazy refresh는 설정 화면에만 추가합니다.
