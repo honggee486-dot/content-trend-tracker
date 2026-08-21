@@ -90,6 +90,7 @@ SCENARIO_TESTS: dict[str, tuple[str, ...]] = {
         "tests/test_browser_workflow_regression_contract.py",
         "tests/test_workflow_navigation_state.py",
         "tests/test_content_workflow_scenarios.py",
+        "tests/test_content_workflow_writing_mode_recommendation.py",
         "tests/test_chatgpt_request_workflow.py",
         "tests/test_adsense_candidate_service.py",
         "tests/test_trend_blog_recommendation_service.py",
