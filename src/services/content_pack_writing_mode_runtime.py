@@ -112,14 +112,13 @@ def render_writing_mode_recommendation(
 
     options = [WRITING_MODE_AUTO, WRITING_MODE_MANUAL]
     key = f"content_pack_writing_mode_choice_{topic_id or 'unknown'}"
-    if key not in st.session_state:
-        st.session_state[key] = mode
+    current = str(st.session_state.get(key) or mode)
+    if current not in options:
+        current = mode
     selected = st.radio(
         "작성 방식",
         options,
-        index=options.index(str(st.session_state.get(key) or mode))
-        if str(st.session_state.get(key) or mode) in options
-        else options.index(mode),
+        index=options.index(current),
         format_func=_mode_label,
         horizontal=True,
         key=key,
