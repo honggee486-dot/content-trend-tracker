@@ -3,6 +3,10 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from src.services.content_pack_image_acquisition_runtime import (
+    install_content_pack_image_acquisition_automation_contract,
+)
+
 
 _OFFICIAL_CAPTURE_FREE_IMAGE_FALLBACK = {
     "status": "not_found",
@@ -22,10 +26,7 @@ _OFFICIAL_CAPTURE_FREE_IMAGE_FALLBACK = {
 }
 
 
-def install_content_pack_capture_schema_consistency_contract() -> None:
-    """Keep the schema 2.1 example unambiguous when official capture is selected."""
-    import src.services.content_pack_service as content_pack_module
-
+def _patch_official_capture_fallback(content_pack_module: Any) -> None:
     schema = content_pack_module.OUTPUT_SCHEMA_EXAMPLE
     blocks = schema.get("blocks") if isinstance(schema, dict) else None
     if not isinstance(blocks, list):
@@ -36,3 +37,14 @@ def install_content_pack_capture_schema_consistency_contract() -> None:
         if block.get("image_strategy") == "official_capture":
             block["free_image"] = deepcopy(_OFFICIAL_CAPTURE_FREE_IMAGE_FALLBACK)
         break
+
+
+def install_content_pack_capture_schema_consistency_contract() -> None:
+    """Keep capture fallback and automation-first image routing contracts aligned."""
+    import src.services.content_pack_service as content_pack_module
+
+    _patch_official_capture_fallback(content_pack_module)
+    # src.__init__ installs the legacy capture parser first. Layer the automation-first
+    # plan after it so old schema 2.1 results remain valid while new outputs can add
+    # capture_anchor and execution metadata.
+    install_content_pack_image_acquisition_automation_contract()
