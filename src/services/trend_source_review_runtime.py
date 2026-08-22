@@ -4,6 +4,9 @@ import hashlib
 from functools import wraps
 from typing import Any
 
+from src.services.content_opportunity_radar_runtime import (
+    install_content_opportunity_radar_contract,
+)
 from src.services.trend_source_review_policy import (
     PUBLIC_INTEREST_SOURCE_TYPES,
     TREND_SOURCE_REVIEW_POLICY_VERSION,
@@ -46,6 +49,11 @@ def install_trend_source_review_contract(discovery_module: Any | None = None) ->
     """모든 실행 경로에서 강한 트렌드 단독·교차 신호를 검토 후보로만 승격합니다."""
     if discovery_module is None:
         from src.services import trend_discovery_service as discovery_module
+
+    # 이 설치 함수는 모든 순위 실행 경로에서 이미 공통으로 호출되므로,
+    # 새 기회 레이더도 같은 모듈에 안전하게 연결합니다. 레이더 실패는 자체 runtime에서
+    # 순위 저장 성공과 분리해 처리합니다.
+    install_content_opportunity_radar_contract(discovery_module)
 
     # 런타임 정책이 바뀌면 기존 순위 서명을 재사용하지 않도록 정책 버전을
     # 순위 서명에 포함합니다. 다음 계산에서 모든 기존 군집도 새 정책으로 재점수됩니다.
