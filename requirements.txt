@@ -5,6 +5,7 @@ markdown>=3.6
 pytest>=8.0.0
 pytest-xdist>=3.5.0
 python-dotenv>=1.0.0
+websockets>=13.0
 
 google-api-python-client>=2.0.0
 google-auth-oauthlib>=1.0.0
