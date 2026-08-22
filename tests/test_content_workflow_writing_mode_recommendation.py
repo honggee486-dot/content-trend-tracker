@@ -151,6 +151,8 @@ class _FakeStreamlit:
     def __init__(self) -> None:
         self.session_state: dict[str, object] = {}
         self.messages: list[tuple[str, str]] = []
+        self.button_types: dict[str, str] = {}
+        self.clicked_keys: set[str] = set()
 
     def success(self, text, **kwargs):
         self.messages.append(("success", str(text)))
@@ -161,11 +163,14 @@ class _FakeStreamlit:
     def caption(self, text):
         self.messages.append(("caption", str(text)))
 
-    def radio(self, label, options, *, index=0, key=None, **kwargs):
+    def columns(self, spec, **kwargs):
+        count = spec if isinstance(spec, int) else len(spec)
+        return [self for _ in range(count)]
+
+    def button(self, label, *, key=None, type="secondary", **kwargs):
         assert key is not None
-        current = self.session_state.get(key, options[index])
-        self.session_state[key] = current
-        return current
+        self.button_types[str(key)] = str(type)
+        return str(key) in self.clicked_keys
 
 
 def test_ui_defaults_to_recommended_mode_and_allows_override() -> None:
@@ -183,12 +188,15 @@ def test_ui_defaults_to_recommended_mode_and_allows_override() -> None:
     )
     assert selected == "auto"
     assert ("success", "작성 방식 추천: 자동 작성") in st.messages
+    assert st.button_types["content_pack_writing_mode_choice_topic-1_auto"] == "primary"
+    assert st.button_types["content_pack_writing_mode_choice_topic-1_manual"] == "secondary"
 
-    st.session_state["content_pack_writing_mode_choice_topic-1"] = "manual"
+    st.clicked_keys.add("content_pack_writing_mode_choice_topic-1_manual")
     selected = render_writing_mode_recommendation(
         defaults,
         topic_id="topic-1",
         st_module=st,
     )
     assert selected == "manual"
+    assert st.session_state["content_pack_writing_mode_choice_topic-1"] == "manual"
     assert any("추천과 다른 방식" in text for level, text in st.messages if level == "caption")
