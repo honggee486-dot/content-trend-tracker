@@ -110,30 +110,40 @@ def render_writing_mode_recommendation(
             + primary_reason
         )
 
-    options = [WRITING_MODE_AUTO, WRITING_MODE_MANUAL]
-    key = f"content_pack_writing_mode_choice_{topic_id or 'unknown'}"
-    current = str(st.session_state.get(key) or mode)
-    if current not in options:
+    choice_key = f"content_pack_writing_mode_choice_{topic_id or 'unknown'}"
+    current = str(st.session_state.get(choice_key) or mode)
+    if current not in {WRITING_MODE_AUTO, WRITING_MODE_MANUAL}:
         current = mode
-    selected = st.radio(
-        "작성 방식",
-        options,
-        index=options.index(current),
-        format_func=_mode_label,
-        horizontal=True,
-        key=key,
-        help=(
-            "추천은 강제가 아닙니다. 자동 추천이어도 수동으로, 수동 추천이어도 자동으로 바꿀 수 있습니다. "
-            "현재 단계에서는 이 선택값을 요청서 작성 경로의 기본 선택으로 유지하며, 자동 실행 엔진 연결은 다음 제작 단계에서 이어집니다."
-        ),
+
+    st.caption("추천된 작성 방식은 강조 표시되며, 반대 방식을 눌러 언제든 변경할 수 있습니다.")
+    auto_col, manual_col = st.columns(2, gap="small")
+    auto_clicked = auto_col.button(
+        "자동 작성",
+        type="primary" if mode == WRITING_MODE_AUTO else "secondary",
+        width="stretch",
+        key=f"{choice_key}_auto",
     )
-    if selected != mode:
+    manual_clicked = manual_col.button(
+        "수동 작성",
+        type="primary" if mode == WRITING_MODE_MANUAL else "secondary",
+        width="stretch",
+        key=f"{choice_key}_manual",
+    )
+    if auto_clicked:
+        current = WRITING_MODE_AUTO
+        st.session_state[choice_key] = current
+    elif manual_clicked:
+        current = WRITING_MODE_MANUAL
+        st.session_state[choice_key] = current
+
+    st.caption(f"현재 선택: {_mode_label(current)}")
+    if current != mode:
         st.caption(
             "추천과 다른 방식을 선택했습니다. 수동 추천 주제를 자동으로 진행하면 사실 확인 부담이 더 클 수 있습니다."
             if mode == WRITING_MODE_MANUAL
             else "추천과 다른 방식을 선택했습니다. 기존 수동 ChatGPT 전달 흐름을 그대로 사용할 수 있습니다."
         )
-    return str(selected)
+    return current
 
 
 def _install_content_pack_ui_wrapper(caller_globals: dict[str, object]) -> None:
