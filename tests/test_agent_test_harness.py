@@ -95,6 +95,22 @@ def test_requested_operating_scenarios_have_dedicated_safe_test_sets() -> None:
         in SCENARIO_TESTS["workflow"]
     )
     assert "tests/test_workflow_navigation_state.py" in SCENARIO_TESTS["workflow"]
+    assert (
+        "tests/test_content_workflow_automatic_writing_models.py"
+        in SCENARIO_TESTS["workflow"]
+    )
+    assert "tests/test_content_quality_review_service.py" in SCENARIO_TESTS["workflow"]
+    assert "tests/test_content_pack_capture_task_runtime.py" in SCENARIO_TESTS["workflow"]
+    assert "tests/test_content_pack_seo_image_contract.py" in SCENARIO_TESTS["workflow"]
+    assert (
+        "tests/test_content_workflow_representative_image.py"
+        in SCENARIO_TESTS["workflow"]
+    )
+    assert (
+        "tests/test_content_workflow_public_capture_executor.py"
+        in SCENARIO_TESTS["workflow"]
+    )
+    assert "tests/test_content_workflow_ui_runtime.py" in SCENARIO_TESTS["workflow"]
     assert "tests/test_adsense_candidate_service.py" in SCENARIO_TESTS["workflow"]
     assert "tests/test_trend_blog_recommendation_service.py" in SCENARIO_TESTS["workflow"]
     assert (
@@ -179,6 +195,21 @@ def test_resolve_routing_keeps_adsense_blog_delta_in_workflow() -> None:
     assert "tests/test_trend_candidate_blog_recommendation_ui.py" in decision.test_files
 
 
+def test_resolve_routing_keeps_quality_and_content_pack_delta_in_workflow() -> None:
+    decision = resolve_routing(
+        [
+            "src/services/content_quality_review_service.py",
+            "tests/test_content_quality_review_service.py",
+            "tests/test_content_pack_capture_task_runtime.py",
+        ]
+    )
+
+    assert decision.mode == "selective"
+    assert decision.scenarios == ("workflow",)
+    assert "tests/test_content_quality_review_service.py" in decision.test_files
+    assert "tests/test_content_workflow_public_capture_executor.py" in decision.test_files
+
+
 def test_resolve_targets_cli_emits_ascii_safe_json(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = main(
         ["--resolve-targets", "src/services/adsense_candidate_service.py"]
@@ -242,8 +273,14 @@ def test_harness_runs_scenarios_sequentially_with_safe_environment() -> None:
     assert len(calls) == 7
     for call in calls:
         assert call["env"]["CONTENT_TREND_AGENT_HARNESS"] == "1"
+        assert call["env"]["CONTENT_TREND_BROWSER_SMOKE"] == "0"
         assert call["env"]["GEMINI_API_KEY"] == ""
         assert call["env"]["NAVER_CLIENT_ID"] == ""
         assert call["env"]["KAKAO_REST_API_KEY"] == ""
+        assert call["env"]["OPENROUTER_API_KEY"] == ""
+        assert call["env"]["GROQ_API_KEY"] == ""
+        assert call["env"]["OPENCODE_API_KEY"] == ""
+        assert call["env"]["CLOUDFLARE_API_TOKEN"] == ""
+        assert call["env"]["CLOUDFLARE_ACCOUNT_ID"] == ""
         assert call["stdin"] is not None
         assert call["check"] is False

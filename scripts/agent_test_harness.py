@@ -91,6 +91,13 @@ SCENARIO_TESTS: dict[str, tuple[str, ...]] = {
         "tests/test_workflow_navigation_state.py",
         "tests/test_content_workflow_scenarios.py",
         "tests/test_content_workflow_writing_mode_recommendation.py",
+        "tests/test_content_workflow_automatic_writing_models.py",
+        "tests/test_content_quality_review_service.py",
+        "tests/test_content_pack_capture_task_runtime.py",
+        "tests/test_content_pack_seo_image_contract.py",
+        "tests/test_content_workflow_representative_image.py",
+        "tests/test_content_workflow_public_capture_executor.py",
+        "tests/test_content_workflow_ui_runtime.py",
         "tests/test_chatgpt_request_workflow.py",
         "tests/test_adsense_candidate_service.py",
         "tests/test_trend_blog_recommendation_service.py",
@@ -163,11 +170,17 @@ def _safe_environment(temporary_root: Path) -> dict[str, str]:
             "PYTHONIOENCODING": "utf-8",
             "PYTHONPYCACHEPREFIX": str(temporary_root / "pycache"),
             "CONTENT_TREND_AGENT_HARNESS": "1",
-            # 테스트 하네스는 실제 API·인증 정보를 사용하지 않습니다.
+            # 테스트 하네스는 실제 외부 호출·브라우저 스모크·인증 정보를 사용하지 않습니다.
+            "CONTENT_TREND_BROWSER_SMOKE": "0",
             "GEMINI_API_KEY": "",
             "NAVER_CLIENT_ID": "",
             "NAVER_CLIENT_SECRET": "",
             "KAKAO_REST_API_KEY": "",
+            "OPENROUTER_API_KEY": "",
+            "GROQ_API_KEY": "",
+            "OPENCODE_API_KEY": "",
+            "CLOUDFLARE_API_TOKEN": "",
+            "CLOUDFLARE_ACCOUNT_ID": "",
         }
     )
     return environment
@@ -384,6 +397,7 @@ def classify_file(path_str: str) -> str | None:
     if (
         p_lower.startswith("src/services/workflow_navigation_")
         or p_lower.startswith("src/services/content_pack_")
+        or p_lower.startswith("src/services/content_quality_")
         or p_lower.startswith("src/services/draft_")
         or p_lower.startswith("src/services/fact_check_")
         or p_lower.startswith("src/services/publish_")
@@ -394,6 +408,8 @@ def classify_file(path_str: str) -> str | None:
         or p_lower.startswith("tests/test_browser_workflow_")
         or p_lower.startswith("tests/test_workflow_navigation_")
         or p_lower.startswith("tests/test_content_workflow_")
+        or p_lower.startswith("tests/test_content_pack_")
+        or p_lower.startswith("tests/test_content_quality_")
         or p_lower.startswith("tests/test_adsense_candidate_")
         or p_lower.startswith("tests/test_trend_blog_recommendation_")
         or p_lower.startswith("tests/test_trend_candidate_blog_recommendation_")

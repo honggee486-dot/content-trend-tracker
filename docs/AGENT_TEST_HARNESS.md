@@ -13,7 +13,10 @@ ChatGPT나 Agent가 실제 운영 DB, 외부 API, Windows 작업 스케줄러를
 - 주제 방향 자동 생성의 요청·검증·저장·재실행 멱등성
 - 실제 DB를 변경하지 않는 운영 진단 보고서·CLI·표본 판단 계약
 - 버튼·작업·Gemini 전송 운영 로그와 앱 supervisor·웹 업데이트 계약
-- 제작 화면 이동, AI 요청서 → AI 결과 → 편집 → 발행 보조, AdSense 후보·블로그 추천 표시 계약
+- 제작 화면 이동, 자동/수동 글쓰기 기반, AI 요청서 → AI 결과 → 편집 → 발행 보조 계약
+- Luna High 품질 감사의 1회 검수·1회 최소 수정 계약
+- 대표 이미지 생성 계획, 공식 공개 페이지 캡처 실행 계약과 안전한 실패 전환
+- AdSense 후보·블로그 추천 표시 계약
 - 개발 하네스와 `apply_update` 안전 계약
 
 ## 실행
@@ -107,7 +110,16 @@ Windows 예약 작업 명령 생성과 상태·쿼터 해석을 검증한다. �
 
 ### `workflow`
 
-AI 요청서 → AI 결과 가져오기 → 글 편집 → 발행 보조의 Streamlit 상태·이동 계약, 자료팩 전환 회귀, AdSense 후보 판단, 블로그 추천 서비스와 글감 추천 표시 UI 계약을 검증한다. 이 시나리오는 **실제 브라우저 렌더링을 실행했다는 뜻이 아니다.** 실제 브라우저·사용자 DB 표본은 별도 사용자 검증 대상으로 남긴다.
+AI 요청서 → AI 결과 가져오기 → 글 편집 → 발행 보조의 Streamlit 상태·이동 계약과 함께 다음 제작 기반을 검증한다.
+
+- 자동/수동 작성 추천과 0원 자동 작성 모델 fallback 계약
+- Luna High 검수 JSON, `revision_requests`, `keep_points`, 1회 수정 제한
+- 공식 캡처 task/schema와 대표 이미지 생성 계약
+- 공개 URL 안전 검사, Fake 캡처 및 public capture runtime의 안전한 실패 전환
+- 콘텐츠 workflow UI 회귀
+- AdSense 후보 판단, 블로그 추천 서비스와 글감 추천 표시 UI
+
+이 시나리오는 **실제 외부 API 호출이나 실제 브라우저 렌더링을 실행했다는 뜻이 아니다.** 하네스는 `CONTENT_TREND_BROWSER_SMOKE=0`을 강제해 public-capture 실브라우저 테스트를 건너뛴다. 실제 Chrome/Edge 공개 페이지 스모크는 별도 로컬/Agent 검증에서만 명시적으로 실행한다.
 
 ### `harness`
 
@@ -118,10 +130,11 @@ AI 요청서 → AI 결과 가져오기 → 글 편집 → 발행 보조의 Stre
 - 먼저 변경 파일과 직접 연결된 테스트 또는 위 시나리오를 실행한다.
 - 실패를 수정했다면 영향받은 같은 시나리오를 다시 실행한다.
 - 새 테스트나 새 파일이 기존 시나리오 책임에 들어가면 해당 `SCENARIO_TESTS` 묶음과 `classify_file()` 경계를 함께 갱신하고, 별도 시나리오는 만들지 않는다.
+- `src/services/content_quality_*`, `tests/test_content_quality_*`, `tests/test_content_pack_*`는 제작 흐름의 직접 계약이므로 `workflow`로 분류한다.
 - 여러 테스트가 반복해서 함께 변경되고 별도 확인 경로가 있어야 선택 실수를 줄일 수 있을 때만 새 시나리오를 만든다. 단일 파일·일회성 검증은 직접 pytest로 유지한다.
 - 문서만 변경했고 실행 계약이 바뀌지 않았다면 텍스트 검사와 해당 문서 계약 테스트를 우선하며 전체 pytest를 기계적으로 반복하지 않는다.
 - 작업 브랜치 적용에서는 `no_op / doc_only / selective / fallback_all` 라우팅을 사용하고, 안전하게 분류할 수 없는 파일을 단지 속도를 위해 억지로 기존 시나리오에 넣지 않는다.
-- GitHub CI의 전체 pytest와 릴리스 최종 검증은 통합 게이트로 유지한다. 같은 HEAD에서 이미 유효하게 통과했고 이후 영향받지 않은 전체 검증은 로컬에서 이유 없이 반복하지 않는다.
+- GitHub CI의 전체 pytest와 릴리스 최종 검증은 통합 게이트로 유지한다. 같은 HEAD에서 이미 유효하게 통과했고 이후 영향을 받지 않은 전체 검증은 로컬에서 이유 없이 반복하지 않는다.
 
 ## 안전 경계
 
@@ -129,12 +142,22 @@ AI 요청서 → AI 결과 가져오기 → 글 편집 → 발행 보조의 Stre
 
 - 실제 `data\content_trend_tracker.duckdb`를 열지 않는다.
 - `.env`의 Gemini, NAVER, Kakao 인증값을 사용하지 않는다.
-- 외부 네트워크 요청 대신 테스트 어댑터와 가짜 Gemini 응답을 사용한다.
+- OpenRouter, Groq, OpenCode, Cloudflare 인증 환경값도 하네스 실행에서 비운다.
+- 외부 네트워크 요청 대신 테스트 어댑터와 가짜 AI 응답을 사용한다.
+- `CONTENT_TREND_BROWSER_SMOKE=0`을 강제해 실제 Chrome/Edge 외부 페이지 캡처를 실행하지 않는다.
 - `schtasks /Create`, `/Delete`를 실제로 실행하지 않는다.
 - pytest 임시 DB·캐시·산출물은 시스템 임시 디렉터리에만 만든다.
 - 저장소 파일과 Git 상태를 수정하지 않는다.
 
-따라서 하네스 통과만으로 실제 수집 결과, 실제 API 품질, 실제 브라우저 동작, 실제 Windows 작업 스케줄러 등록 상태까지 통과했다고 해석하지 않는다.
+따라서 하네스 통과만으로 실제 수집 결과, 실제 AI 품질, 실제 브라우저 동작, 실제 Windows 작업 스케줄러 등록 상태까지 통과했다고 해석하지 않는다.
+
+실제 공개 페이지 캡처 스모크가 필요할 때만 로컬/Agent에서 별도로 실행한다.
+
+```powershell
+$env:CONTENT_TREND_BROWSER_SMOKE = "1"
+python -m pytest -q -p no:cacheprovider tests/test_content_workflow_public_capture_executor.py
+Remove-Item Env:CONTENT_TREND_BROWSER_SMOKE -ErrorAction SilentlyContinue
+```
 
 ## 하네스 확장 절차
 
